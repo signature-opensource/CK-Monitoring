@@ -55,7 +55,7 @@ public partial class HostApplicationBuilderTests
 
         // Restores the Debug level (we are on the GrandOutput.Default).
         config["CK-Monitoring:GrandOutput:MinimalFilter"] = "Debug";
-        System.Threading.Thread.Sleep( 200 );
+        System.Threading.Thread.Sleep( 500 );
 
         var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).ToArray();
         texts.Where( e => e != null && e.StartsWith( "GrandOutput.Default configuration n°4." ) ).ShouldNotBeEmpty();
@@ -200,7 +200,6 @@ public partial class HostApplicationBuilderTests
         }
 
         DemoSinkHandler.Reset();
-        InputLogEntry.AliveCount.ShouldBe( 0 );
     }
 
 

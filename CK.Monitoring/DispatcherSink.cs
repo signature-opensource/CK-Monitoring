@@ -21,7 +21,7 @@ public sealed class DispatcherSink
     // RemoveDynamicHandler pushes a IDynamicGrandOutputHandler.
     readonly Channel<object?> _queue;
 
-    readonly Task _task;
+    readonly Task _runningTask;
     readonly List<IGrandOutputHandler> _handlers;
     readonly IdentityCard _identityCard;
     readonly long _deltaExternalTicks;
@@ -75,7 +75,7 @@ public sealed class DispatcherSink
         // But more importantly, this monitor identifier is the one of the GrandOutput: each log entry
         // references this identifier.
         _sinkMonitorId = monitor.UniqueId;
-        _task = ProcessAsync( monitor );
+        _runningTask = ProcessAsync( monitor );
     }
 
     internal string SinkMonitorId => _sinkMonitorId;
@@ -374,7 +374,7 @@ public sealed class DispatcherSink
         return false;
     }
 
-    internal Task RunningTask => _task;
+    internal Task RunningTask => _runningTask;
 
     /// <summary>
     /// Handles a log entry.

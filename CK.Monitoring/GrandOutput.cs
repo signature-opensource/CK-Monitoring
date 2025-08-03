@@ -179,7 +179,7 @@ public sealed partial class GrandOutput : IAsyncDisposable
         _identityCard = new IdentityCard();
         _clients = new List<WeakReference<GrandOutputClient>>();
         _minimalFilter = LogFilter.Undefined;
-        // Starts the pump thread. Its monitor will be registered
+        // Starts the Sink agent. Its monitor will be registered
         // in this GrandOutput.
         _sink = new DispatcherSink( m => DoEnsureGrandOutputClient( m ),
                                     _identityCard,
@@ -369,7 +369,7 @@ public sealed partial class GrandOutput : IAsyncDisposable
     public DispatcherSink Sink => _sink;
 
     /// <summary>
-    /// Definitely stops this GrandOutput. Thsi can be called concurrently and multiple times.
+    /// Definitely stops this GrandOutput. This can be called concurrently and multiple times.
     /// If this is the default one that is stopped, <see cref="Default"/> is set to null.
     /// <para>
     /// This doesn't wait for the internal agent to terminate. Use <see cref="RunningTask"/> to
