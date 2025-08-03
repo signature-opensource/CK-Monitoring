@@ -39,7 +39,7 @@ public sealed partial class GrandOutput : IAsyncDisposable
     /// <summary>
     /// Gets the default <see cref="GrandOutput"/> for the current Application Domain.
     /// Note that <see cref="EnsureActiveDefault"/> must have been called, otherwise this static property is null
-    /// and that this Default can be <see cref="Dispose()"/> at any time (this static property will be set back to null).
+    /// and that this Default can be <see cref="DisposeAsync()"/> at any time (this static property will be set back to null).
     /// </summary>
     public static GrandOutput? Default => _default;
 
@@ -72,7 +72,7 @@ public sealed partial class GrandOutput : IAsyncDisposable
     /// that <see cref="MonitorTraceListener.FailFast"/> property can be changed at any time.
     /// </para>
     /// <para>
-    /// The GrandOutput.Default can safely be <see cref="Dispose()"/> at any time: disposing the Default 
+    /// The GrandOutput.Default can safely be <see cref="DisposeAsync()"/> at any time: disposing the Default 
     /// sets it to null.
     /// </para>
     /// </remarks>

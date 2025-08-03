@@ -14,7 +14,7 @@ public static class HostApplicationBuilderMonitoringExtensions
     /// <summary>
     /// Gets an activity monitor for this builder.
     /// <para>
-    /// This can always be called: logs in this monitor are retained and emitted once the code injected by <see cref="UseCKMonitoring(IHostBuilder)"/>
+    /// This can always be called: logs in this monitor are retained and emitted once the code injected by <see cref="UseCKMonitoring{T}(T)"/>
     /// is executed during <see cref="IHostBuilder.Build()"/>.  
     /// </para>
     /// </summary>
@@ -145,20 +145,20 @@ public static class HostApplicationBuilderMonitoringExtensions
         return builder;
     }
 
-
     /// <summary>
     /// Initializes an independent <see cref="GrandOutput"/> from the <see cref="IHostApplicationBuilder.Configuration"/> "CK-Monitoring" section.
     /// This GrandOuput will be automatically disposed when calling <see cref="IHost.StopAsync(System.Threading.CancellationToken)"/>.
     /// <para>
-    /// Yhis is for advanced scenario. <see cref="UseCKMonitoring{T}(T)"/> should almost always be used.
+    /// This is for advanced scenario. <see cref="UseCKMonitoring{T}(T)"/> should almost always be used.
     /// </para>
     /// </summary>
     /// <param name="builder">Host builder</param>
+    /// <param name="grandOutput">The new GrandOutput instance or the already existing one.</param>
     /// <returns>The builder.</returns>
     public static T UseCKMonitoringWithIndependentGrandOutput<T>( this T builder, out GrandOutput grandOutput ) where T : IHostApplicationBuilder
     {
         var t = typeof( GrandOutput );
-        if( !builder.Properties.TryGetValue( t,out var oGrandOutput ) )
+        if( !builder.Properties.TryGetValue( t, out var oGrandOutput ) )
         {
             var c = new GrandOutputConfigurator( builder, isDefaultGrandOutput: false );
             builder.Properties.Add( t, oGrandOutput = c.GrandOutputTarget );

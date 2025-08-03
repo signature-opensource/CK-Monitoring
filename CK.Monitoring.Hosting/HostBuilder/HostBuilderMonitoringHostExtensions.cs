@@ -28,7 +28,7 @@ public static class HostBuilderMonitoringHostExtensions
     /// <summary>
     /// Gets an activity monitor for this builder context.
     /// <para>
-    /// This can always be called: logs in this monitor are retained and emitted once the code injected by <see cref="UseCKMonitoring(IHostBuilder, string)"/>
+    /// This can always be called: logs in this monitor are retained and emitted once the code injected by <see cref="UseCKMonitoring(IHostBuilder)"/>
     /// is executed during <see cref="IHostBuilder.Build()"/>.  
     /// </para>
     /// </summary>
