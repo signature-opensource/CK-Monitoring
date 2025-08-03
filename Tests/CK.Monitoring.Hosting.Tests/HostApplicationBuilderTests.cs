@@ -173,14 +173,16 @@ public partial class HostApplicationBuilderTests
             config.Remove( "CK-Monitoring:TagFilters:1:1" );
         }
 
-        await Task.Delay( 200 );
+        await Task.Delay( 400 );
 
         RunWithTagFilters( Sql, Machine, m );
 
-        config["CK-Monitoring:TagFilters:0:0"] = "Sql";
-        config["CK-Monitoring:TagFilters:0:1"] = "Trace";
-
-        await Task.Delay( 200 );
+        using( config.StartBatch() )
+        {
+            config["CK-Monitoring:TagFilters:0:0"] = "Sql";
+            config["CK-Monitoring:TagFilters:0:1"] = "Trace";
+        }
+        await Task.Delay( 400 );
 
         m.Debug( Sql, "NOP! This is in Debug!" );
         m.Trace( Machine, "SHOW!" );
