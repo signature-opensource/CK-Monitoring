@@ -162,7 +162,7 @@ public partial class HostApplicationBuilderTests
 
         var m = new ActivityMonitor();
 
-        RunWithTagFilters( Sql, Machine, m );
+        RunWithTagFilters( "With initial configurations.", Sql, Machine, m );
 
         // Removing the TagFilters totally should keep the current filters.
         using( config.StartBatch() )
@@ -175,7 +175,7 @@ public partial class HostApplicationBuilderTests
 
         await Task.Delay( 400 );
 
-        RunWithTagFilters( Sql, Machine, m );
+        RunWithTagFilters( "Removing the TagFilters totally should keep the current filters.", Sql, Machine, m );
 
         using( config.StartBatch() )
         {
@@ -199,25 +199,23 @@ public partial class HostApplicationBuilderTests
                .ShouldContain( "DONE!" )
                .ShouldContain( "Stopping GrandOutput." );
 
-        static void RunWithTagFilters( CKTrait Sql, CKTrait Machine, ActivityMonitor m )
+        static void RunWithTagFilters( string message, CKTrait Sql, CKTrait Machine, ActivityMonitor m )
         {
             m.Debug( Sql, "YES: Sql!" );
             m.Trace( Machine, "NOSHOW" );
             m.Trace( Machine | Sql, "Yes again!" );
             m.Trace( "DONE!" );
 
-            System.Threading.Thread.Sleep( 200 );
+            System.Threading.Thread.Sleep( 400 );
 
             var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
-            texts.ShouldContain( "YES: Sql!" )
-                   .ShouldContain( "Yes again!" )
-                   .ShouldNotContain( "NOSHOW" )
-                   .ShouldContain( "DONE!" );
+            texts.ShouldContain( "YES: Sql!", message )
+                   .ShouldContain( "Yes again!", message )
+                   .ShouldNotContain( "NOSHOW", message )
+                   .ShouldContain( "DONE!", message );
 
             DemoSinkHandler.Reset();
         }
-
-        DemoSinkHandler.Reset();
     }
 
 
