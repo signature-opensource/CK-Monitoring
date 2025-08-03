@@ -192,6 +192,8 @@ public class LogSenderTests
                                            .ShouldNotContain( "NOSHOW" );
 
         await host.StopAsync();
+        grandOutput.StoppedToken.IsCancellationRequested.ShouldBeTrue( "Independent GrandOutput are disposed when the Host is disposed." );
+        grandOutput.RunningTask.IsCompletedSuccessfully.ShouldBeTrue( "Independent GrandOutput are disposed when the Host is disposed." );
     }
 
 }

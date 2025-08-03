@@ -21,11 +21,8 @@ public partial class HostApplicationBuilderTests
     [TestCase( false )]
     public async Task GrandOutput_MinimalFilter_configuration_works_Async( bool builderMonitorBeforeUseCKMonitoring )
     {
-        // Disposes current GrandOutput.Default if any.
-        var d = GrandOutput.Default;
-        if( d != null ) await d.DisposeAsync();
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
 
-        DemoSinkHandler.Reset();
         var config = new DynamicConfigurationSource();
         config["CK-Monitoring:GrandOutput:Handlers:CK.Monitoring.Hosting.Tests.DemoSinkHandler, CK.Monitoring.Hosting.Tests"] = "true";
 
@@ -34,7 +31,10 @@ public partial class HostApplicationBuilderTests
 
         IActivityMonitor? monitor = null;
         if( builderMonitorBeforeUseCKMonitoring ) monitor = builder.GetBuilderMonitor();
+
         builder.UseCKMonitoring();
+        GrandOutput.Default.ShouldNotBeNull();
+
         if( !builderMonitorBeforeUseCKMonitoring ) monitor = builder.GetBuilderMonitor();
         Throw.DebugAssert( monitor != null );
 
@@ -53,20 +53,22 @@ public partial class HostApplicationBuilderTests
         System.Threading.Thread.Sleep( 200 );
         monitor.ActualFilter.ShouldBe( new LogFilter( LogLevelFilter.Fatal, LogLevelFilter.Debug ), "Null doesn't change anything." );
 
-        // Restores the Debug level (we are on the GrandOutput.Default).
-        config["CK-Monitoring:GrandOutput:MinimalFilter"] = "Debug";
-        System.Threading.Thread.Sleep( 500 );
+        await GrandOutput.Default.DisposeAsync();
 
         var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).ToArray();
-        texts.Where( e => e != null && e.StartsWith( "GrandOutput.Default configuration n°4." ) ).ShouldNotBeEmpty();
-        texts.Where( e => e != null && e.StartsWith( "GrandOutput.Default configuration n°5." ) )
-            .ShouldBeEmpty( "There has been the initial configuration (n°0) and 4 reconfigurations." );
+        texts.ShouldContain( "GrandOutput.Default configuration n°0." )
+             .ShouldContain( "GrandOutput.Default configuration n°1." )
+             .ShouldContain( "GrandOutput.Default configuration n°2." )
+             .ShouldContain( "GrandOutput.Default configuration n°3." )
+             .ShouldNotContain( "GrandOutput.Default configuration n°4.",
+                    "There has been the initial configuration (n°0) and 3 reconfigurations." );
     }
 
     [Test]
     public async Task Invalid_configurations_are_skipped_and_errors_go_to_the_current_handlers_Async()
     {
-        DemoSinkHandler.Reset();
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
+
         var config = new DynamicConfigurationSource();
         config["CK-Monitoring:GrandOutput:Handlers:CK.Monitoring.Hosting.Tests.DemoSinkHandler, CK.Monitoring.Hosting.Tests"] = "true";
 
@@ -84,6 +86,7 @@ public partial class HostApplicationBuilderTests
         m.Info( "AFTER" );
 
         await app.StopAsync();
+        await GrandOutput.Default!.DisposeAsync();
 
         DemoSinkHandler.LogEvents.Select( e => e.Text ).ShouldContain( "Topic: The topic!" )
                .ShouldContain( "BEFORE" )
@@ -95,7 +98,8 @@ public partial class HostApplicationBuilderTests
     [Test]
     public async Task Configuration_changes_dont_stutter_Async()
     {
-        DemoSinkHandler.Reset();
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
+
         var config = new DynamicConfigurationSource();
         config["CK-Monitoring:GrandOutput:Handlers:CK.Monitoring.Hosting.Tests.DemoSinkHandler, CK.Monitoring.Hosting.Tests"] = "true";
 
@@ -104,7 +108,10 @@ public partial class HostApplicationBuilderTests
 
         var app = builder.UseCKMonitoring()
                          .Build();
+        GrandOutput.Default.ShouldNotBeNull();
+
         await app.StartAsync();
+
 
         var m = new ActivityMonitor( "The starting topic!" );
 
@@ -115,12 +122,14 @@ public partial class HostApplicationBuilderTests
         m.Info( "DONE!" );
 
         await app.StopAsync();
+        await GrandOutput.Default!.DisposeAsync();
 
         var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
         texts.ShouldContain( "GrandOutput.Default configuration n°0" )
                .ShouldContain( "GrandOutput.Default configuration n°1" )
                .ShouldNotContain( "GrandOutput.Default configuration n°2" )
-               .ShouldContain( "DONE!" );
+               .ShouldContain( "DONE!" )
+               .ShouldContain( "Stopping GrandOutput." );
     }
 
     [Test]
@@ -129,7 +138,8 @@ public partial class HostApplicationBuilderTests
         CKTrait Sql = ActivityMonitor.Tags.Register( "Sql" );
         CKTrait Machine = ActivityMonitor.Tags.Register( "Machine" );
 
-        DemoSinkHandler.Reset();
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
+
         var config = new DynamicConfigurationSource();
         config["CK-Monitoring:GrandOutput:Handlers:CK.Monitoring.Hosting.Tests.DemoSinkHandler, CK.Monitoring.Hosting.Tests"] = "true";
         config["CK-Monitoring:GrandOutput:MinimalFilter"] = "Trace";
@@ -140,8 +150,12 @@ public partial class HostApplicationBuilderTests
 
         var builder = Host.CreateEmptyApplicationBuilder( new HostApplicationBuilderSettings { DisableDefaults = true } );
         builder.Configuration.Sources.Add( config );
-        builder.UseCKMonitoring();
 
+        GrandOutput.Default.ShouldBeNull();
+        builder.UseCKMonitoring();
+        GrandOutput.Default.ShouldNotBeNull();
+
+        // UseCKMonitoring can be called multiple times.
         var app = builder.UseCKMonitoring()
                          .Build();
         await app.StartAsync();
@@ -174,12 +188,14 @@ public partial class HostApplicationBuilderTests
         m.Trace( "DONE!" );
 
         await app.StopAsync();
+        await GrandOutput.Default!.DisposeAsync();
 
         var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
         texts.ShouldContain( "SHOW!" )
                .ShouldContain( "Yes again!" )
                .ShouldNotContain( "NOP! This is in Debug!" )
-               .ShouldContain( "DONE!" );
+               .ShouldContain( "DONE!" )
+               .ShouldContain( "Stopping GrandOutput." );
 
         static void RunWithTagFilters( CKTrait Sql, CKTrait Machine, ActivityMonitor m )
         {
@@ -204,8 +220,10 @@ public partial class HostApplicationBuilderTests
 
 
     [Test]
-    public void finding_MailAlerter_handler_by_conventions()
+    public async Task finding_MailAlerter_handler_by_conventions_Async()
     {
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
+
         // Define tag since this assembly doesn't depend on CK.Monitoring.MailAlerterHandler.
         var sendMailTag = ActivityMonitor.Tags.Register( "SendMail" );
 
@@ -221,22 +239,27 @@ public partial class HostApplicationBuilderTests
         var builder = Host.CreateEmptyApplicationBuilder( new HostApplicationBuilderSettings { DisableDefaults = true } );
         builder.Configuration.Sources.Add( config );
         builder.UseCKMonitoring();
+        GrandOutput.Default.ShouldNotBeNull();
 
         var m = new ActivityMonitor();
         m.Info( sendMailTag, "Hello World!" );
 
         // The assembly has been loaded.
         var a = AppDomain.CurrentDomain.GetAssemblies().Single( a => a.GetName().Name == "CK.Monitoring.MailAlerterHandler" );
-        var t = a.GetType( "CK.Monitoring.Handlers.MailAlerter" );
-        Debug.Assert( t != null );
+        var t = a.GetType( "CK.Monitoring.Handlers.MailAlerter" ).ShouldNotBeNull();
+
+        await GrandOutput.Default.DisposeAsync();
+
         var sent = (string?)t.GetField( "LastMailSent", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static )!.GetValue( null );
         sent.ShouldBe( "Hello World!" );
 
     }
 
     [Test]
-    public void StaticGates_works()
+    public async Task StaticGates_works_Async()
     {
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
+
         AsyncLock.Gate.IsOpen.ShouldBeFalse();
         AsyncLock.Gate.HasDisplayName.ShouldBeTrue( "Otherwise it wouldn't be configurable." );
         AsyncLock.Gate.DisplayName.ShouldBe( "AsyncLock" );
@@ -248,7 +271,11 @@ public partial class HostApplicationBuilderTests
             var builder = Host.CreateEmptyApplicationBuilder( new HostApplicationBuilderSettings { DisableDefaults = true } );
             builder.Configuration.Sources.Add( config );
             builder.UseCKMonitoring();
+            GrandOutput.Default.ShouldNotBeNull();
+
             AsyncLock.Gate.IsOpen.ShouldBeTrue();
+
+            await GrandOutput.Default.DisposeAsync();
         }
         finally
         {
@@ -259,7 +286,7 @@ public partial class HostApplicationBuilderTests
     [Test]
     public async Task DotNetEventSources_works_Async()
     {
-        DemoSinkHandler.Reset();
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
 
         System.Diagnostics.Tracing.EventLevel? current = DotNetEventSourceCollector.GetLevel( "System.Runtime", out var found );
         found.ShouldBeTrue();
@@ -275,6 +302,8 @@ public partial class HostApplicationBuilderTests
 
             var app = builder.UseCKMonitoring()
                              .Build();
+            GrandOutput.Default.ShouldNotBeNull();
+
             await app.StartAsync();
 
             var rtConf = DotNetEventSourceCollector.GetLevel( "System.Runtime", out _ );
@@ -284,6 +313,7 @@ public partial class HostApplicationBuilderTests
             diConf.ShouldBe( System.Diagnostics.Tracing.EventLevel.Verbose );
 
             await app.StopAsync();
+            await GrandOutput.Default.DisposeAsync();
 
             var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
             texts.ShouldContain( "Applying .Net EventSource configuration: 'System.Runtime:W(arning only W matters);Microsoft-Extensions-DependencyInjection:V'." )
@@ -292,43 +322,35 @@ public partial class HostApplicationBuilderTests
         finally
         {
             DotNetEventSourceCollector.Disable( "System.Runtime" );
-            DemoSinkHandler.Reset();
         }
     }
 
     [Test]
     public async Task MS_Logging_Adapter_works_Async()
     {
-        // Disposes current GrandOutput.Default if any.
-        var d = GrandOutput.Default;
-        if( d != null ) await d.DisposeAsync();
+        await DemoSinkHandler.ResetAndDisposeGrandOutputDefaultAsync();
 
-        DemoSinkHandler.Reset();
-        try
-        {
-            var config = new DynamicConfigurationSource();
-            config["CK-Monitoring:GrandOutput:Handlers:CK.Monitoring.Hosting.Tests.DemoSinkHandler, CK.Monitoring.Hosting.Tests"] = "true";
-            config["CK-Monitoring:GrandOutput:HandleDotNetLogs"] = "true";
-            config["CK-Monitoring:GrandOutput:MinimalFilter"] = "Debug";
+        var config = new DynamicConfigurationSource();
+        config["CK-Monitoring:GrandOutput:Handlers:CK.Monitoring.Hosting.Tests.DemoSinkHandler, CK.Monitoring.Hosting.Tests"] = "true";
+        config["CK-Monitoring:GrandOutput:HandleDotNetLogs"] = "true";
+        config["CK-Monitoring:GrandOutput:MinimalFilter"] = "Debug";
 
-            var builder = Host.CreateEmptyApplicationBuilder( new HostApplicationBuilderSettings { DisableDefaults = true } );
-            builder.Configuration.Sources.Add( config );
+        var builder = Host.CreateEmptyApplicationBuilder( new HostApplicationBuilderSettings { DisableDefaults = true } );
+        builder.Configuration.Sources.Add( config );
 
-            builder.UseCKMonitoring();
-            builder.Services.AddLogging();
-            var host = builder.Build();
-            System.Threading.Thread.Sleep( 200 );
+        builder.UseCKMonitoring();
+        GrandOutput.Default.ShouldNotBeNull();
 
-            var logger = host.Services.GetRequiredService<ILogger<HostApplicationBuilderTests>>();
-            logger.LogInformation( "Hello world (MS.Extensions.Logging)" );
-            System.Threading.Thread.Sleep( 200 );
+        builder.Services.AddLogging();
+        var host = builder.Build();
+        System.Threading.Thread.Sleep( 200 );
 
-            var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).ToArray();
-            texts.ShouldContain( "[CK.Monitoring.Hosting.Tests.HostApplicationBuilderTests] Hello world (MS.Extensions.Logging)" );
-        }
-        finally
-        {
-            DemoSinkHandler.Reset();
-        }
+        var logger = host.Services.GetRequiredService<ILogger<HostApplicationBuilderTests>>();
+        logger.LogInformation( "Hello world (MS.Extensions.Logging)" );
+
+        await GrandOutput.Default.DisposeAsync();
+
+        var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).ToArray();
+        texts.ShouldContain( "[CK.Monitoring.Hosting.Tests.HostApplicationBuilderTests] Hello world (MS.Extensions.Logging)" );
     }
 }
