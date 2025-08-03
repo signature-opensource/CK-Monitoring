@@ -162,27 +162,33 @@ public partial class HostApplicationBuilderTests
 
         var m = new ActivityMonitor();
 
-        RunWithTagFilters( "With initial configurations.", Sql, Machine, m );
+        var filters = ActivityMonitor.Tags.Filters.Select( f => f.ToString() ).Concatenate();
+        filters.ShouldBe( "(Sql, Debug), (Machine, Release!)" );
 
-        // Removing the TagFilters totally should keep the current filters.
-        using( config.StartBatch() )
-        {
-            config.Remove( "CK-Monitoring:TagFilters:0:0" );
-            config.Remove( "CK-Monitoring:TagFilters:0:1" );
-            config.Remove( "CK-Monitoring:TagFilters:1:0" );
-            config.Remove( "CK-Monitoring:TagFilters:1:1" );
-        }
+        m.Debug( Sql, "YES: Sql!" );
+        m.Trace( Machine, "NOSHOW" );
+        m.Trace( Machine | Sql, "Yes again!" );
+        m.Trace( "DONE!" );
+        System.Threading.Thread.Sleep( 200 );
 
-        await Task.Delay( 400 );
-
-        RunWithTagFilters( "Removing the TagFilters totally should keep the current filters.", Sql, Machine, m );
+        var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
+        texts.ShouldContain( "YES: Sql!" )
+               .ShouldContain( "Yes again!" )
+               .ShouldNotContain( "NOSHOW" )
+               .ShouldContain( "DONE!" );
+        DemoSinkHandler.Reset();
 
         using( config.StartBatch() )
         {
             config["CK-Monitoring:TagFilters:0:0"] = "Sql";
             config["CK-Monitoring:TagFilters:0:1"] = "Trace";
+            config.Remove( "CK-Monitoring:TagFilters:1:0" );
+            config.Remove( "CK-Monitoring:TagFilters:1:1" );
         }
         await Task.Delay( 400 );
+
+        filters = ActivityMonitor.Tags.Filters.Select( f => f.ToString() ).Concatenate();
+        filters.ShouldBe( "(Sql, Trace)" );
 
         m.Debug( Sql, "NOP! This is in Debug!" );
         m.Trace( Machine, "SHOW!" );
@@ -192,30 +198,12 @@ public partial class HostApplicationBuilderTests
         await app.StopAsync();
         await GrandOutput.Default!.DisposeAsync();
 
-        var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
+        texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
         texts.ShouldContain( "SHOW!" )
                .ShouldContain( "Yes again!" )
                .ShouldNotContain( "NOP! This is in Debug!" )
                .ShouldContain( "DONE!" )
                .ShouldContain( "Stopping GrandOutput." );
-
-        static void RunWithTagFilters( string message, CKTrait Sql, CKTrait Machine, ActivityMonitor m )
-        {
-            m.Debug( Sql, "YES: Sql!" );
-            m.Trace( Machine, "NOSHOW" );
-            m.Trace( Machine | Sql, "Yes again!" );
-            m.Trace( "DONE!" );
-
-            System.Threading.Thread.Sleep( 400 );
-
-            var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
-            texts.ShouldContain( "YES: Sql!", message )
-                   .ShouldContain( "Yes again!", message )
-                   .ShouldNotContain( "NOSHOW", message )
-                   .ShouldContain( "DONE!", message );
-
-            DemoSinkHandler.Reset();
-        }
     }
 
 
