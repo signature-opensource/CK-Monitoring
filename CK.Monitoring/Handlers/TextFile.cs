@@ -9,10 +9,12 @@ namespace CK.Monitoring.Handlers;
 /// </summary>
 public sealed class TextFile : IGrandOutputHandler
 {
+    static readonly CKTrait _metricsTag = ActivityMonitor.Tags.Register( "Metrics" );
     readonly MonitorTextFileOutput _file;
     TextFileConfiguration _config;
     int _countFlush;
     int _countHousekeeping;
+    bool _shouldHandleMetrics;
 
     /// <summary>
     /// Initializes a new <see cref="TextFile"/> based on a <see cref="TextFileConfiguration"/>.
@@ -24,6 +26,7 @@ public sealed class TextFile : IGrandOutputHandler
         _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false );
         _countFlush = _config.AutoFlushRate;
         _countHousekeeping = _config.HousekeepingRate;
+        _shouldHandleMetrics = config.HandleMetrics;
     }
 
     /// <summary>
@@ -46,6 +49,13 @@ public sealed class TextFile : IGrandOutputHandler
     /// <param name="logEvent">The log entry.</param>
     public ValueTask HandleAsync( IActivityMonitor monitor, InputLogEntry logEvent )
     {
+        if( _shouldHandleMetrics
+            && logEvent.MonitorId == ActivityMonitor.StaticLogMonitorUniqueId
+            && logEvent.Tags.Overlaps( _metricsTag ) )
+        {
+
+        }
+
         _file.Write( logEvent );
         return ValueTask.CompletedTask;
     }
@@ -89,6 +99,7 @@ public sealed class TextFile : IGrandOutputHandler
         _file.Flush();
         _countFlush = _config.AutoFlushRate;
         _countHousekeeping = _config.HousekeepingRate;
+        _shouldHandleMetrics = _config.HandleMetrics;
         return ValueTask.FromResult( true );
     }
 
