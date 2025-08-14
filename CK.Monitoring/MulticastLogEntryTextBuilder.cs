@@ -225,8 +225,8 @@ public class MulticastLogEntryTextBuilder
 
         if( logEntry.Text != null )
         {
-            Debug.Assert( logEntry.LogType != LogEntryType.CloseGroup );
-            if( logEntry.LogType == LogEntryType.OpenGroup ) _builder.Append( "> " );
+            Throw.DebugAssert( logEntry.LogType != LogEntryType.CloseGroup );
+            if( logEntry.LogType == LogEntryType.OpenGroup ) _builder.Append( '>' );
             _builder.Append( " [" ).Append( logEntry.Tags ).Append( "] " );
             multiLinePrefix += "   ";
             _builder.AppendMultiLine( multiLinePrefix, logEntry.Text, false );
@@ -238,7 +238,7 @@ public class MulticastLogEntryTextBuilder
         }
         else
         {
-            Debug.Assert( logEntry.Conclusions != null );
+            Throw.DebugAssert( logEntry.Conclusions != null );
             _builder.Append( "< " );
             if( logEntry.Conclusions.Count > 0 )
             {
