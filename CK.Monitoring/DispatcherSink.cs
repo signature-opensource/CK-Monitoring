@@ -1,5 +1,4 @@
 using CK.Core;
-using CommunityToolkit.HighPerformance.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -123,7 +122,7 @@ public sealed class DispatcherSink
         // ...then sends the current content of the identity card.
         monitor.UnfilteredLog( LogLevel.Info | LogLevel.IsFiltered, IdentityCard.IdentityCardFull, _identityCard.ToString(), null );
         // Configures the next timer due date.
-        long now = Environment.TickCount64;
+        long now = Stopwatch.GetTimestamp();
         _nextTicks = now + _timerDuration.Ticks;
         _nextExternalTicks = now + _timerDuration.Ticks;
         // Creates and launch the "awaker". This avoids any CancellationToken.
@@ -211,7 +210,7 @@ public sealed class DispatcherSink
             #region if not closing: process OnTimer (on every item) and handle dynamic handlers.
             if( !_stopTokenSource.IsCancellationRequested )
             {
-                now = Environment.TickCount64;
+                now = Stopwatch.GetTimestamp();
                 if( now >= _nextTicks )
                 {
                     foreach( var h in _handlers )
