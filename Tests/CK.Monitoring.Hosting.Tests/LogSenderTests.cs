@@ -34,12 +34,14 @@ public class LogSenderTests
         grandOutput.EnsureGrandOutputClient( monitor );
 
         monitor.Info( "NOSHOW" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
+
         FakeLogSender.ActivatedSender.ShouldNotBeNull();
         FakeLogSender.ActivatedSender.FakeSender.ShouldBeNull();
         FakeLogSender.FakeSenderCanBeCreated = true;
         monitor.Info( "NOSHOW" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
+
         var sender = FakeLogSender.ActivatedSender.FakeSender;
         Debug.Assert( sender != null );
         sender.Disposed.ShouldBeFalse();
@@ -62,7 +64,7 @@ public class LogSenderTests
         grandOutput.EnsureGrandOutputClient( monitor );
 
         monitor.Info( "NOSHOW since the buffer is configured to 5 and we'll buffer 6 logs here." );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
 
         monitor.Info( "n°1" );
         monitor.Info( "n°2" );
@@ -71,7 +73,7 @@ public class LogSenderTests
         // This one will be buffered and evict the NOSHOW.
         monitor.Info( "n°5" );
         // Let the logs reach the handler.
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
 
         // Allow the ISender to be created and actually send the logs.
         FakeLogSender.FakeSenderCanBeCreated = true;
@@ -81,7 +83,7 @@ public class LogSenderTests
         // One log will now trigger the creation of the ISender, the
         // dump of the buffered entries and the n°6.
         monitor.Info( "n°6" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
 
         var sender = FakeLogSender.ActivatedSender.FakeSender;
         Debug.Assert( sender != null, "The sender has been created." );
@@ -128,7 +130,8 @@ public class LogSenderTests
         grandOutput.EnsureGrandOutputClient( monitor );
 
         monitor.Info( "NOSHOW" );
-        await Task.Delay( 50 );
+
+        await grandOutput.Sink.SyncWaitAsync();
 
         FakeLogSender.ActivatedSender.ShouldBeNull( "The handler has been deactivated and removed." );
 
@@ -164,29 +167,29 @@ public class LogSenderTests
         grandOutput.EnsureGrandOutputClient( monitor );
 
         monitor.Info( "n°1" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
         Open( false );
 
         // The LostBufferSize is 3: these 3 will be eventually sent.
         monitor.Info( "n°2" );
         monitor.Info( "n°3" );
         monitor.Info( "n°4" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
 
         Open( true );
         monitor.Info( "n°5" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
 
         Open( false );
         monitor.Info( "NOSHOW - will be evicted." );
         monitor.Info( "n°6" );
         monitor.Info( "n°7" );
         monitor.Info( "n°8" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
 
         Open( true );
         monitor.Info( "n°9" );
-        await Task.Delay( 50 );
+        await grandOutput.Sink.SyncWaitAsync();
 
         FakeLogSender.LogSent.Concatenate().ShouldContain( "n°1, n°2, n°3, n°4, n°5, n°6, n°7, n°8, n°9" )
                                            .ShouldNotContain( "NOSHOW" );

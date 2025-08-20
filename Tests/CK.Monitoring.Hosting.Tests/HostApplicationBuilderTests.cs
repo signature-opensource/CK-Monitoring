@@ -117,7 +117,7 @@ public partial class HostApplicationBuilderTests
 
         config["CK-Monitoring:GrandOutput:Handlers:Console"] = "true";
 
-        await Task.Delay( 200 );
+        await GrandOutput.Default.Sink.SyncWaitAsync();
 
         m.Info( "DONE!" );
 
@@ -169,7 +169,8 @@ public partial class HostApplicationBuilderTests
         m.Trace( Machine, "NOSHOW" );
         m.Trace( Machine | Sql, "Yes again!" );
         m.Trace( "DONE!" );
-        System.Threading.Thread.Sleep( 200 );
+
+        await GrandOutput.Default.Sink.SyncWaitAsync();
 
         var texts = DemoSinkHandler.LogEvents.OrderBy( e => e.LogTime ).Select( e => e.Text ).Concatenate( System.Environment.NewLine );
         texts.ShouldContain( "YES: Sql!" )
@@ -185,7 +186,7 @@ public partial class HostApplicationBuilderTests
             config.Remove( "CK-Monitoring:TagFilters:1:0" );
             config.Remove( "CK-Monitoring:TagFilters:1:1" );
         }
-        await Task.Delay( 400 );
+        await GrandOutput.Default.Sink.SyncWaitAsync();
 
         filters = ActivityMonitor.Tags.Filters.Select( f => f.ToString() ).Concatenate();
         filters.ShouldBe( "(Sql, Trace)" );

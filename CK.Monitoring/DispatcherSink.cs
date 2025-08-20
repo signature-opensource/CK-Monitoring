@@ -138,24 +138,24 @@ public sealed class DispatcherSink
             if( o is InputLogEntry e )
             {
                 // Regular handling.
-                // An identity update that comes from this monitor id (the sink's monitor identifier)
-                // has been sent by IdentityCardOnChanged: we let it sink to the handlers.
-                // Others (with an independent monitor identifier) are not sent to the handlers, they are
-                // updating this IdentityCard and will trigger a IdentityCardOnChanged (or not if no change occurred).
-                if( !ReferenceEquals( e.MonitorId, _sinkMonitorId )
-                    && e.Tags.Overlaps( ActivityMonitorSimpleSenderExtension.IdentityCard.IdentityCardUpdate ) )
+                // IdentityCardUpdate entries are hooked and if they can't be parsed or if they trigger
+                // no change, we filter them out.
+                bool skip = false;
+                if( e.Tags.Overlaps( ActivityMonitorSimpleSenderExtension.IdentityCard.IdentityCardUpdate ) )
                 {
                     var i = IdentityCard.TryUnpack( e.Text );
                     if( i is IReadOnlyList<(string, string)> identityInfo )
                     {
-                        _identityCard.Add( identityInfo );
+                        var change = _identityCard.Add( identityInfo );
+                        skip = change == null;
                     }
                     else
                     {
                         monitor.Error( $"Invalid {nameof( ActivityMonitorSimpleSenderExtension.AddIdentityInformation )} payload: '{e.Text}'." );
+                        skip = true;
                     }
                 }
-                else
+                if( !skip )
                 {
                     foreach( var h in _handlers )
                     {

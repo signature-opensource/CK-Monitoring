@@ -188,31 +188,22 @@ public class IdentityCardTests
         string folder = TestHelper.PrepareLogFolder( "AddIdentityInformation" );
         var textConf = new Handlers.TextFileConfiguration() { Path = "AddIdentityInformation", AutoFlushRate = 1 };
 
-        await using var g = new GrandOutput( new GrandOutputConfiguration()
-            {
-                TimerDuration = TimeSpan.FromMilliseconds( 15 ),
-                Handlers = { textConf }
-            } );
-        var m = new ActivityMonitor( ActivityMonitorOptions.SkipAutoConfiguration );
-        g.EnsureGrandOutputClient( m );
-        m.AddIdentityInformation( "Hello", "World!" );
-        m.AddIdentityInformation( "Hello", "World2" );
-        m.AddIdentityInformation( "Hello", "World!" );
+        IdentityCard.ReadOnly identityCard;
+        await using( var g = new GrandOutput( new GrandOutputConfiguration() { TimerDuration = TimeSpan.FromMilliseconds( 15 ), Handlers = { textConf } } ) )
+        {
+            identityCard = g.IdentityCard;
+            var m = new ActivityMonitor( ActivityMonitorOptions.SkipAutoConfiguration );
+            g.EnsureGrandOutputClient( m );
+            m.AddIdentityInformation( "Hello", "World!" );
+            m.AddIdentityInformation( "Hello", "World2" );
+            m.AddIdentityInformation( "Hello", "World!" );
+        }
 
-        await g.Sink.SyncWaitAsync();
-
-        g.IdentityCard.Identities["Hello"].ShouldNotBeEmpty( "The identity card has been updated." );
-        g.IdentityCard.Identities["Hello"].ShouldBe( ["World!", "World2" ], ignoreOrder: true );
+        identityCard.Identities["Hello"].ShouldNotBeEmpty( "The identity card has been updated." );
+        identityCard.Identities["Hello"].ShouldBe( ["World!", "World2"], ignoreOrder: true );
 
         string tempFile = Directory.EnumerateFiles( folder ).Single();
-
-        waitForLines:
         var lines = TestHelper.FileReadAllText( tempFile ).Split( Environment.NewLine, StringSplitOptions.RemoveEmptyEntries );
-        if( lines.Length == 0 )
-        {
-            await Task.Delay( 20 );
-            goto waitForLines;
-        }
         var helloUpdateLines = lines.Where( l => l.Contains( $"Hello{ActivityMonitorSimpleSenderExtension.IdentityCard.KeySeparator}World!" ) );
         helloUpdateLines.Count().ShouldBe( 1, "The Hello line has been added only once." );
 
