@@ -18,7 +18,7 @@ public sealed partial class GrandOutput : IAsyncDisposable
 {
     readonly List<WeakReference<GrandOutputClient>> _clients;
     readonly DispatcherSink _sink;
-    readonly IdentityCard _identityCard;
+    readonly IdentityCard.ReadOnly _identityCard;
     LogFilter _minimalFilter;
 
     static GrandOutput? _default;
@@ -176,13 +176,14 @@ public sealed partial class GrandOutput : IAsyncDisposable
     {
         Throw.CheckNotNullArgument( config );
         // Creates the identity card and the client list first.
-        _identityCard = new IdentityCard();
+        var identityCard = new IdentityCard();
+        _identityCard = identityCard.AsReadOnly();
         _clients = new List<WeakReference<GrandOutputClient>>();
         _minimalFilter = LogFilter.Undefined;
         // Starts the Sink agent. Its monitor will be registered
         // in this GrandOutput.
         _sink = new DispatcherSink( m => DoEnsureGrandOutputClient( m ),
-                                    _identityCard,
+                                    identityCard,
                                     config.TimerDuration ?? TimeSpan.FromMilliseconds( 500 ),
                                     TimeSpan.FromMinutes( 5 ),
                                     DoGarbageDeadClients,
@@ -224,9 +225,9 @@ public sealed partial class GrandOutput : IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets the identity card of this GrandOutput.
+    /// Gets the read only identity card of this GrandOutput.
     /// </summary>
-    public IdentityCard IdentityCard => _identityCard;
+    public IdentityCard.ReadOnly IdentityCard => _identityCard;
 
     /// <summary>
     /// Gets this GrandOutput identifier: this is the identifier of the dispatcher sink monitor.
