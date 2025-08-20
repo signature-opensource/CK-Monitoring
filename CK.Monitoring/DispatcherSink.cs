@@ -1,4 +1,5 @@
 using CK.Core;
+using CommunityToolkit.HighPerformance.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -196,12 +197,21 @@ public sealed class DispatcherSink
                         _handlers.Remove( dH.Handler );
                     }
                 }
+                else if( o is TaskCompletionSource asyncWait )
+                {
+                    asyncWait.SetResult();
+                }
+                else if( o is SyncWaitSignal syncWait )
+                {
+                    lock( syncWait )
+                        Monitor.Pulse( syncWait );
+                }
             }
             #endregion
             #region if not closing: process OnTimer (on every item) and handle dynamic handlers.
             if( !_stopTokenSource.IsCancellationRequested )
             {
-                now = DateTime.UtcNow.Ticks;
+                now = Environment.TickCount64;
                 if( now >= _nextTicks )
                 {
                     foreach( var h in _handlers )
@@ -247,6 +257,15 @@ public sealed class DispatcherSink
             if( more is InputLogEntry e )
             {
                 e.Release();
+            }
+            else if( more is TaskCompletionSource asyncWait )
+            {
+                asyncWait.SetResult();
+            }
+            else if( more is SyncWaitSignal syncWait )
+            {
+                lock( syncWait )
+                    Monitor.Pulse( syncWait );
             }
         }
         foreach( var h in _handlers )
@@ -401,6 +420,39 @@ public sealed class DispatcherSink
         if( !_queue.Writer.TryWrite( logEvent ) )
         {
             logEvent.Release();
+        }
+    }
+
+    /// <summary>
+    /// Waits for the current waiting queue of entries to be dispatched.
+    /// </summary>
+    /// <returns>The awaitable.</returns>
+    public Task SyncWaitAsync()
+    {
+        TaskCompletionSource c = new TaskCompletionSource( TaskCreationOptions.RunContinuationsAsynchronously );
+        if( !_queue.Writer.TryWrite( c ) )
+        {
+            c.SetResult();
+        }
+        return c.Task;
+    }
+
+    sealed class SyncWaitSignal {}
+
+    /// <summary>
+    /// Waits for the current waiting queue of entries to be dispatched.
+    /// </summary>
+    /// <returns>The awaitable.</returns>
+    public void SyncWait()
+    {
+        var c = new SyncWaitSignal();
+        if( !_queue.Writer.TryWrite( c ) )
+        {
+            return;
+        }
+        lock( c )
+        {
+            Monitor.Wait( c );
         }
     }
 
