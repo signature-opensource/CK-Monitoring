@@ -13,7 +13,7 @@ public interface IFullLogEntry : ILogEntry, IFullLogInfo
     /// The <see cref="IFullLogInfo.GrandOutputId"/>, <see cref="IFullLogInfo.PreviousEntryType"/>
     /// and <see cref="IFullLogInfo.PreviousLogTime"/> are lost (but less memory is used).
     /// <para>
-    /// This creates a snapshot: used on e <see cref="InputLogEntry"/>, this captures the input data
+    /// This creates a snapshot: used on a <see cref="InputLogEntry"/>, this captures the input data
     /// independently of the input being released to the pool.
     /// </para>
     /// </summary>

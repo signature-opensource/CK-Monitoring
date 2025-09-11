@@ -108,6 +108,12 @@ public sealed partial class IdentityCard
     }
 
     /// <summary>
+    /// Gets a readonly safe view on this card.
+    /// </summary>
+    /// <returns></returns>
+    public ReadOnly AsReadOnly() => new ReadOnly( this );
+
+    /// <summary>
     /// Adds a single identity information. If the key/value are invalid, null is returned and an
     /// error log is emitted in the <see cref="ActivityMonitor.StaticLogger"/>.
     /// <para>

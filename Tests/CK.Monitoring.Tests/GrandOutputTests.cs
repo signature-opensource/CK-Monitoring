@@ -167,7 +167,7 @@ public class GrandOutputTests
             var taskC = Task.Factory.StartNew( () => DumpMonitor1083Entries( CreateMonitorAndRegisterGrandOutput( "Task C", g ), 5 ), default, TaskCreationOptions.LongRunning, TaskScheduler.Default );
 
             await Task.WhenAll( taskA, taskB, taskC );
-            await Task.Delay( 1000 );
+            await g.Sink.SyncWaitAsync();
         }
 
         string gzipCkmon = TestHelper.WaitForCkmonFilesInDirectory( folder + @"\OutputGzip", 1 ).Single();

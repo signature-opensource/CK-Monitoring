@@ -83,12 +83,30 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
     }
 
     /// <summary>
-    /// Transfers the current <see cref="ILogEntry"/> to the <see cref="CachedEntries"/>
-    /// and updates <see cref="CachedTexts"/> accordingly.
+    /// Calls <see cref="DispatcherSink.SyncWait()"/>, transfers the current <see cref="ILogEntry"/> to
+    /// the <see cref="CachedEntries"/> and updates <see cref="CachedTexts"/> accordingly.
     /// Current entries are cleared.
     /// </summary>
     /// <returns>The cached entries.</returns>
     public IReadOnlyList<ILogEntry> UpdateCachedEntries()
+    {
+        _sink.SyncWait();
+        return DoUpdateCachedEntries();
+    }
+
+    /// <summary>
+    /// Calls <see cref="DispatcherSink.SyncWaitAsync()"/>, transfers the current <see cref="ILogEntry"/> to
+    /// the <see cref="CachedEntries"/> and updates <see cref="CachedTexts"/> accordingly.
+    /// Current entries are cleared.
+    /// </summary>
+    /// <returns>The cached entries.</returns>
+    public async Task<IReadOnlyList<ILogEntry>> UpdateCachedEntriesAsync()
+    {
+        await _sink.SyncWaitAsync();
+        return DoUpdateCachedEntries();
+    }
+
+    IReadOnlyList<ILogEntry> DoUpdateCachedEntries()
     {
         lock( _buffer )
         {
@@ -107,10 +125,26 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
     }
 
     /// <summary>
-    /// Collects all the current <see cref="ILogEntry"/> and clears them.
+    /// Calls <see cref="DispatcherSink.SyncWait()"/>, collects all the current <see cref="ILogEntry"/> and clears them.
     /// </summary>
     /// <returns>The current entries.</returns>
     public ILogEntry[] ExtractCurrentEntries()
+    {
+        _sink.SyncWait();
+        return DoExtractCurrentEntries();
+    }
+
+    /// <summary>
+    /// Calls <see cref="DispatcherSink.SyncWaitAsync()"/>, collects all the current <see cref="ILogEntry"/> and clears them.
+    /// </summary>
+    /// <returns>The current entries.</returns>
+    public async Task<ILogEntry[]> ExtractCurrentEntriesAsync()
+    {
+        await _sink.SyncWaitAsync();
+        return DoExtractCurrentEntries();
+    }
+
+    ILogEntry[] DoExtractCurrentEntries()
     {
         lock( _buffer )
         {
@@ -121,12 +155,27 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
     }
 
     /// <summary>
-    /// Collects the current texts and clears the current entries.
+    /// Calls <see cref="DispatcherSink.SyncWait()"/>, collects the current texts and clears the current entries.
     /// </summary>
     /// <returns>The current log texts.</returns>
     public ImmutableArray<string> ExtractCurrentTexts()
     {
         var a = ExtractCurrentEntries();
+        return ExtractedToText( a );
+    }
+
+    /// <summary>
+    /// Calls <see cref="DispatcherSink.SyncWaitAsync()"/>, collects the current texts and clears the current entries.
+    /// </summary>
+    /// <returns>The current log texts.</returns>
+    public async Task<ImmutableArray<string>> ExtractCurrentTextsAsync()
+    {
+        var a = await ExtractCurrentEntriesAsync().ConfigureAwait( false );
+        return ExtractedToText( a );
+    }
+
+    static ImmutableArray<string> ExtractedToText( ILogEntry[] a )
+    {
         var b = ImmutableArray.CreateBuilder<string>( a.Length );
         bool hasCloseGroup = false;
         foreach( var e in a )
@@ -138,19 +187,37 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
     }
 
     /// <summary>
-    /// Copies the latest entries, optionally clears all the current entries
-    /// and returns the number of entries copied into <paramref name="newest"/>.
+    /// Calls <see cref="DispatcherSink.SyncWait()"/> and copies the latest entries, optionally clears all
+    /// the current entries and returns the number of entries copied into <paramref name="oldest"/>.
+    /// </summary>
+    /// <param name="oldest">A target destination.</param>
+    /// <returns>
+    /// The number of entries copied in newest. <see cref="Span{T}.Slice(int, int)"/> should be used.
+    /// </returns>
+    public int ExtractOldestTo( Span<ILogEntry> oldest )
+    {
+        _sink.SyncWait();
+        lock( _buffer )
+        {
+            return _buffer.PopRange( oldest );
+        }
+    }
+
+    /// <summary>
+    /// Calls <see cref="DispatcherSink.SyncWait()"/> and copies the latest entries, optionally clears all
+    /// the current entries and returns the number of entries copied into <paramref name="newest"/>.
     /// </summary>
     /// <param name="newest">A target destination.</param>
     /// <param name="clearAll">True to clear all the current entries.</param>
     /// <returns>
     /// The number of entries copied in newest. <see cref="Span{T}.Slice(int, int)"/> should be used.
     /// </returns>
-    public int CopyTo( Span<ILogEntry> newest, bool clearAll = false )
+    public int ExtractNewestTo( Span<ILogEntry> newest, bool clearAll = false )
     {
+        _sink.SyncWait();
         lock( _buffer )
         {
-            int c = _buffer.CopyTo( newest );
+            int c = _buffer.PopRange( newest );
             if( clearAll ) _buffer.Clear();
             return c;
         }

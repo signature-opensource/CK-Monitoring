@@ -1,4 +1,5 @@
 using CK.Core;
+using Shouldly;
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
@@ -19,6 +20,20 @@ public class DemoSinkHandler : IGrandOutputHandler
 
     public static void Reset()
     {
+        ActivateCount = 0;
+        ApplyConfigurationCount = 0;
+        foreach( var e in LogEvents ) e.Release();
+        LogEvents.Clear();
+        DeactivateCount = 0;
+        OnTimerCount = 0;
+    }
+
+    public static async Task ResetAndDisposeGrandOutputDefaultAsync()
+    {
+        var existingGrandOutput = GrandOutput.Default;
+        if( existingGrandOutput != null ) await existingGrandOutput.DisposeAsync();
+        GrandOutput.Default.ShouldBeNull();
+
         ActivateCount = 0;
         ApplyConfigurationCount = 0;
         foreach( var e in LogEvents ) e.Release();

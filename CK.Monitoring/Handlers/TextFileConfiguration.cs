@@ -15,6 +15,12 @@ public class TextFileConfiguration : FileConfigurationBase
     public int AutoFlushRate { get; set; } = 6;
 
     /// <summary>
+    /// True to write the "Metrics" logs.
+    /// Default to false.
+    /// </summary>
+    public bool HandleMetrics { get; internal set; }
+
+    /// <summary>
     /// Clones this configuration.
     /// </summary>
     /// <returns>Clone of this configuration.</returns>

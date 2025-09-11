@@ -1,29 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
-    <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <IsPackable>false</IsPackable>
-    </PropertyGroup>
-    <ItemGroup>
-        <Compile Include="..\CK.Monitoring.Tests\StupidStringClient.cs" Link="StupidStringClient.cs" />
-        <Compile Include="..\CK.Monitoring.Tests\TestHelper.cs" Link="TestHelper.cs" />
-    </ItemGroup>
-    <ItemGroup>
-        <PackageReference Include="CK.AspNet.Tester" Version="4.0.4" />
-        <PackageReference Include="Shouldly" Version="4.3.0" />
-        <PackageReference Include="NUnit" Version="4.2.2" />
-        <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-    </ItemGroup>
-    <ItemGroup>
-        <ProjectReference Include="..\..\CK.Monitoring.Hosting\CK.Monitoring.Hosting.csproj" />
-    </ItemGroup>
-    <ItemGroup>
-        <!--
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\CK.Monitoring.Tests\StupidStringClient.cs" Link="StupidStringClient.cs" />
+    <Compile Include="..\CK.Monitoring.Tests\TestHelper.cs" Link="TestHelper.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CK.AspNet.Tester" Version="4.0.4" />
+    <PackageReference Include="Shouldly" Version="4.3.0" />
+    <PackageReference Include="NUnit" Version="4.4.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\CK.Monitoring.Hosting\CK.Monitoring.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
     This only ensures that the MailAlerter is compiled. 
     But we don't want for this test the CK.Monitoring.MailAlerterHandler.dll to be copied into the bin of this test project 
     (the test finding_MailAlerter_handler_by_conventions_Async will explicitly copy the MailAlerterHandler dll).
     This reproduces a real "plugin mode".
     -->
-        <ProjectReference Include="..\CK.Monitoring.MailAlerterHandler\CK.Monitoring.MailAlerterHandler.csproj" ReferenceOutputAssembly="false" Private="false" />
-    </ItemGroup>
+    <ProjectReference Include="..\CK.Monitoring.MailAlerterHandler\CK.Monitoring.MailAlerterHandler.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
 </Project>

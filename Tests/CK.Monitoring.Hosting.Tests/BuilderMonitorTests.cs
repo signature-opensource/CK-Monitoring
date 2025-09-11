@@ -2,6 +2,7 @@ using CK.AspNet.Tester;
 using CK.Core;
 using Microsoft.Extensions.Hosting;
 using NUnit.Framework;
+using Shouldly;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -28,7 +29,7 @@ public class BuilderMonitorTests
 
         // The GetBuilderMonitor() is available.
         var builder = Host.CreateEmptyApplicationBuilder( new HostApplicationBuilderSettings { DisableDefaults = true } );
-        builder.GetBuilderMonitor().Info( "This will eventually be logged!" );
+        builder.GetBuilderMonitor().Info( "[Before configure] This will eventually be logged!" );
 
         // And we configure the text log output...
         // This works because the BuilderMonitor retains and replays the logs received before the
@@ -36,15 +37,17 @@ public class BuilderMonitorTests
         var config = new DynamicConfigurationSource();
         config["CK-Monitoring:GrandOutput:Handlers:TextFile:Path"] = "FromBuilderMonitor";
         builder.Configuration.Sources.Add( config );
+
         builder.UseCKMonitoring();
+        GrandOutput.Default.ShouldNotBeNull( "UseCKMonitoring ensures the GrandOuput.Default." );
 
         builder.GetBuilderMonitor().Info( "After configure." );
 
         var app = builder.Build();
-        await GrandOutput.Default!.DisposeAsync();
+        await GrandOutput.Default.DisposeAsync();
 
         var text = TestHelper.FileReadAllText( Directory.EnumerateFiles( folder ).Single() );
-        text.ShouldContain( "This will eventually be logged!" )
+        text.ShouldContain( "[Before configure] This will eventually be logged!" )
             .ShouldContain( "After configure." );
 
         // Just make sure that the replay doesn't leak.

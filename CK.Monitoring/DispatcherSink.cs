@@ -21,7 +21,7 @@ public sealed class DispatcherSink
     // RemoveDynamicHandler pushes a IDynamicGrandOutputHandler.
     readonly Channel<object?> _queue;
 
-    readonly Task _task;
+    readonly Task _runningTask;
     readonly List<IGrandOutputHandler> _handlers;
     readonly IdentityCard _identityCard;
     readonly long _deltaExternalTicks;
@@ -42,6 +42,7 @@ public sealed class DispatcherSink
     long _nextTicks;
     long _nextExternalTicks;
     int _configurationCount;
+    InputLogEntry? _closingLog;
     DateTimeStamp _externalLogLastTime;
     readonly bool _isDefaultGrandOutput;
     bool _unhandledExceptionTracking;
@@ -75,7 +76,7 @@ public sealed class DispatcherSink
         // But more importantly, this monitor identifier is the one of the GrandOutput: each log entry
         // references this identifier.
         _sinkMonitorId = monitor.UniqueId;
-        _task = ProcessAsync( monitor );
+        _runningTask = ProcessAsync( monitor );
     }
 
     internal string SinkMonitorId => _sinkMonitorId;
@@ -97,7 +98,6 @@ public sealed class DispatcherSink
     /// Gets a cancellation token that is canceled by Stop.
     /// </summary>
     internal CancellationToken StoppingToken => _stoppingToken;
-
 
     async Task ProcessAsync( IActivityMonitor monitor )
     {
@@ -122,7 +122,7 @@ public sealed class DispatcherSink
         // ...then sends the current content of the identity card.
         monitor.UnfilteredLog( LogLevel.Info | LogLevel.IsFiltered, IdentityCard.IdentityCardFull, _identityCard.ToString(), null );
         // Configures the next timer due date.
-        long now = DateTime.UtcNow.Ticks;
+        long now = Stopwatch.GetTimestamp();
         _nextTicks = now + _timerDuration.Ticks;
         _nextExternalTicks = now + _timerDuration.Ticks;
         // Creates and launch the "awaker". This avoids any CancellationToken.
@@ -137,28 +137,25 @@ public sealed class DispatcherSink
             #region Process event if any (including the CloseSentinel).
             if( o is InputLogEntry e )
             {
-                // The CloseSentinel is the "soft stop": it ensures that any entries added prior
-                // to the call to stop have been handled (but if _forceClose is set, this is ignored).
-                if( e == InputLogEntry.CloseSentinel ) break;
                 // Regular handling.
-                // An identity update that comes from this monitor id (the sink's monitor identifier)
-                // has been sent by IdentityCardOnChanged: we let it sink to the handlers.
-                // Others (with an independent monitor identifier) are not sent to the handlers, they are
-                // updating this IdentityCard and will trigger a IdentityCardOnChanged (or not if no change occurred).
-                if( !ReferenceEquals( e.MonitorId, _sinkMonitorId )
-                    && e.Tags.Overlaps( ActivityMonitorSimpleSenderExtension.IdentityCard.IdentityCardUpdate ) )
+                // IdentityCardUpdate entries are hooked and if they can't be parsed or if they trigger
+                // no change, we filter them out.
+                bool skip = false;
+                if( e.Tags.Overlaps( ActivityMonitorSimpleSenderExtension.IdentityCard.IdentityCardUpdate ) )
                 {
                     var i = IdentityCard.TryUnpack( e.Text );
                     if( i is IReadOnlyList<(string, string)> identityInfo )
                     {
-                        _identityCard.Add( identityInfo );
+                        var change = _identityCard.Add( identityInfo );
+                        skip = change == null;
                     }
                     else
                     {
                         monitor.Error( $"Invalid {nameof( ActivityMonitorSimpleSenderExtension.AddIdentityInformation )} payload: '{e.Text}'." );
+                        skip = true;
                     }
                 }
-                else
+                if( !skip )
                 {
                     foreach( var h in _handlers )
                     {
@@ -172,6 +169,13 @@ public sealed class DispatcherSink
                             faulty ??= new List<IGrandOutputHandler>();
                             faulty.Add( h );
                         }
+                    }
+                    // The _closingLog is the "soft stop": it ensures that any entries added prior
+                    // to the call to stop have been handled (but if _forceClose is set, this is ignored).
+                    if( e == _closingLog )
+                    {
+                        e.Release();
+                        break;
                     }
                 }
                 e.Release();
@@ -192,12 +196,21 @@ public sealed class DispatcherSink
                         _handlers.Remove( dH.Handler );
                     }
                 }
+                else if( o is TaskCompletionSource asyncWait )
+                {
+                    asyncWait.SetResult();
+                }
+                else if( o is SyncWaitSignal syncWait )
+                {
+                    lock( syncWait )
+                        Monitor.Pulse( syncWait );
+                }
             }
             #endregion
             #region if not closing: process OnTimer (on every item) and handle dynamic handlers.
             if( !_stopTokenSource.IsCancellationRequested )
             {
-                now = DateTime.UtcNow.Ticks;
+                now = Stopwatch.GetTimestamp();
                 if( now >= _nextTicks )
                 {
                     foreach( var h in _handlers )
@@ -240,14 +253,29 @@ public sealed class DispatcherSink
             // This GrandOuput/Sink is closed, handling them would be too risky
             // and semantically questionable.
             // We only release the entries that have been written to the defunct channel.
-            if( more is InputLogEntry e && e != InputLogEntry.CloseSentinel )
+            if( more is InputLogEntry e )
             {
                 e.Release();
             }
+            else if( more is TaskCompletionSource asyncWait )
+            {
+                asyncWait.SetResult();
+            }
+            else if( more is SyncWaitSignal syncWait )
+            {
+                lock( syncWait )
+                    Monitor.Pulse( syncWait );
+            }
         }
-        foreach( var h in _handlers ) await SafeActivateOrDeactivateAsync( monitor, h, false );
+        foreach( var h in _handlers )
+        {
+            await SafeActivateOrDeactivateAsync( monitor, h, false );
+        }
         _stopTokenSource.Dispose();
-        monitor.MonitorEnd();
+        // Don't call monitor.MonitorEnd(); here as it's final log would 
+        // be handled by other GrandOutput than this one and that is not
+        // really interesting. Morevover we only use the the Default in
+        // practice.
     }
 
     void IdentityCardOnChanged( IdentiCardChangedEvent change )
@@ -365,7 +393,8 @@ public sealed class DispatcherSink
             if( !_stopTokenSource.IsCancellationRequested )
             {
                 _stopTokenSource.Cancel();
-                if( _queue.Writer.TryWrite( InputLogEntry.CloseSentinel ) ) _queue.Writer.TryComplete();
+                _closingLog = CreateExternalLog( LogLevel.Info | LogLevel.IsFiltered, null, "Stopping GrandOutput.", null );
+                if( _queue.Writer.TryWrite( _closingLog ) ) _queue.Writer.TryComplete();
                 _identityCard.LocalUninitialize( _isDefaultGrandOutput );
                 SetUnhandledExceptionTracking( false );
                 return true;
@@ -374,7 +403,7 @@ public sealed class DispatcherSink
         return false;
     }
 
-    internal Task RunningTask => _task;
+    internal Task RunningTask => _runningTask;
 
     /// <summary>
     /// Handles a log entry.
@@ -390,6 +419,39 @@ public sealed class DispatcherSink
         if( !_queue.Writer.TryWrite( logEvent ) )
         {
             logEvent.Release();
+        }
+    }
+
+    /// <summary>
+    /// Waits for the current waiting queue of entries to be dispatched.
+    /// </summary>
+    /// <returns>The awaitable.</returns>
+    public Task SyncWaitAsync()
+    {
+        TaskCompletionSource c = new TaskCompletionSource( TaskCreationOptions.RunContinuationsAsynchronously );
+        if( !_queue.Writer.TryWrite( c ) )
+        {
+            c.SetResult();
+        }
+        return c.Task;
+    }
+
+    sealed class SyncWaitSignal {}
+
+    /// <summary>
+    /// Waits for the current waiting queue of entries to be dispatched.
+    /// </summary>
+    /// <returns>The awaitable.</returns>
+    public void SyncWait()
+    {
+        var c = new SyncWaitSignal();
+        if( !_queue.Writer.TryWrite( c ) )
+        {
+            return;
+        }
+        lock( c )
+        {
+            Monitor.Wait( c );
         }
     }
 
@@ -414,6 +476,12 @@ public sealed class DispatcherSink
                                Exception? ex = null,
                                string monitorId = ActivityMonitor.ExternalLogMonitorUniqueId )
     {
+        InputLogEntry e = CreateExternalLog( level, tags, message, ex, monitorId );
+        Handle( e );
+    }
+
+    InputLogEntry CreateExternalLog( LogLevel level, CKTrait? tags, string message, Exception? ex, string monitorId = ActivityMonitor.ExternalLogMonitorUniqueId )
+    {
         DateTimeStamp prevLogTime;
         DateTimeStamp logTime;
         lock( _externalLogLock )
@@ -429,7 +497,7 @@ public sealed class DispatcherSink
                                                     level,
                                                     tags ?? ActivityMonitor.Tags.Empty,
                                                     CKExceptionData.CreateFrom( ex ) );
-        Handle( e );
+        return e;
     }
 
     internal void OnStaticLog( ref ActivityMonitorLogData d )

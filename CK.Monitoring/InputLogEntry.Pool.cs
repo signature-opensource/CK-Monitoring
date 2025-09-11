@@ -72,7 +72,7 @@ public sealed partial class InputLogEntry
         return item;
     }
 
-    // For SinkLog.
+    // For ExternalLog.
     internal static InputLogEntry AcquireInputLogEntry( string grandOutputId,
                                                         string monitorId,
                                                         DateTimeStamp prevLogTime,
@@ -108,7 +108,6 @@ public sealed partial class InputLogEntry
 
     static void Release( InputLogEntry c )
     {
-        Throw.DebugAssert( c != CloseSentinel );
         Interlocked.Decrement( ref _aliveItems );
         if( _fastItem != null || Interlocked.CompareExchange( ref _fastItem, c, null ) != null )
         {
