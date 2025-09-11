@@ -13,6 +13,10 @@ public sealed partial class IdentityCard
     {
         readonly IdentityCard _card;
 
+        /// <summary>
+        /// Initializes a new read only card.
+        /// </summary>
+        /// <param name="card">The source card.</param>
         public ReadOnly( IdentityCard card )
         {
             Throw.CheckNotNullArgument( card );

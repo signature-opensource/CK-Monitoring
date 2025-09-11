@@ -191,7 +191,6 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
     /// the current entries and returns the number of entries copied into <paramref name="oldest"/>.
     /// </summary>
     /// <param name="oldest">A target destination.</param>
-    /// <param name="clearAll">True to clear all the current entries.</param>
     /// <returns>
     /// The number of entries copied in newest. <see cref="Span{T}.Slice(int, int)"/> should be used.
     /// </returns>
