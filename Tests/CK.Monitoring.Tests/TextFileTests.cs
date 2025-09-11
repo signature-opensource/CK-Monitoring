@@ -327,10 +327,11 @@ public class TextFileTests
         // Open another GrandOutput to trigger housekeeping
         await using( GrandOutput g = new GrandOutput( config ) )
         {
-            // Wait for next flush (~100 ms)
-            Thread.Sleep( 200 );
+            await Task.Delay( 200 );
         }
-
+#if RELEASE
+        await Task.Delay( 400 );
+#endif
         File.Exists( finalLogFile ).ShouldBeFalse( "Inactive log file was deleted" );
     }
 
@@ -377,6 +378,9 @@ public class TextFileTests
             // Wait for next flush (~100 ms)
             Thread.Sleep( 200 );
         }
+#if RELEASE
+        await Task.Delay( 400 );
+#endif
         var files = Directory.GetFiles( folder ).Select( f => Path.GetFileName( f ) );
         files.Count().ShouldBe( 2, $"Only 2 files should be kept - the last log file, and 1x~1KB file: {files.Concatenate()}" );
     }
