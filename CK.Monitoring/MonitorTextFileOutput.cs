@@ -70,13 +70,14 @@ public class MonitorTextFileOutput : MonitorFileOutputBase
     /// <summary>
     /// Called when the current file is closed.
     /// </summary>
-    protected override void CloseCurrentFile()
+    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
+    protected override string? CloseCurrentFile()
     {
         Debug.Assert( _writer != null, "Checked by CloseFile." );
         _writer.Flush();
         _writer.Dispose();
         _writer = null;
         _canFlush = false;
-        base.CloseCurrentFile();
+        return base.CloseCurrentFile();
     }
 }

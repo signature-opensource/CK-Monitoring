@@ -19,7 +19,7 @@ public class BinaryFile : IGrandOutputHandler
     /// <param name="config">The configuration.</param>
     public BinaryFile( BinaryFileConfiguration config )
     {
-        if( config == null ) throw new ArgumentNullException( "config" );
+        Throw.CheckNotNullArgument( config );
         _file = new MonitorBinaryFileOutput( config.Path, config.MaxCountPerFile, config.UseGzipCompression );
         _config = config;
         _countHousekeeping = _config.HousekeepingRate;
@@ -101,5 +101,16 @@ public class BinaryFile : IGrandOutputHandler
         _file.Close();
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>
+    /// Closes the current file if it is opened and has at least one entry.
+    /// Does nothing otherwise and returns null.
+    /// <para>
+    /// This is exposed to support potential <see cref="GrandOutputHandlersAction"/> (or <see cref="GrandOutputHandlersAction{TResult}"/>)
+    /// that can be implemented to explicitly close the current file.
+    /// </para>
+    /// </summary>
+    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
+    public string? CloseCurrentFile() => _file.Close();
 
 }

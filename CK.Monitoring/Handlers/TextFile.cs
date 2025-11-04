@@ -22,7 +22,8 @@ public sealed class TextFile : IGrandOutputHandler
     /// <param name="config">The configuration.</param>
     public TextFile( TextFileConfiguration config )
     {
-        _config = config ?? throw new ArgumentNullException( nameof( config ) );
+        Throw.CheckNotNullArgument( config );
+        _config = config;
         _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false );
         _countFlush = _config.AutoFlushRate;
         _countHousekeeping = _config.HousekeepingRate;
@@ -32,12 +33,12 @@ public sealed class TextFile : IGrandOutputHandler
     /// <summary>
     /// Initialization of the handler: computes the path.
     /// </summary>
-    /// <param name="m">The monitor to use.</param>
-    public ValueTask<bool> ActivateAsync( IActivityMonitor m )
+    /// <param name="monitor">The monitor to use.</param>
+    public ValueTask<bool> ActivateAsync( IActivityMonitor monitor )
     {
-        using( m.OpenTrace( $"Initializing TextFile handler (MaxCountPerFile = {_file.MaxCountPerFile})." ) )
+        using( monitor.OpenTrace( $"Initializing TextFile handler (MaxCountPerFile = {_file.MaxCountPerFile})." ) )
         {
-            _file.Initialize( m );
+            _file.Initialize( monitor );
             return ValueTask.FromResult( true );
         }
     }
@@ -63,9 +64,9 @@ public sealed class TextFile : IGrandOutputHandler
     /// <summary>
     /// Automatically flushes the file based on <see cref="TextFileConfiguration.AutoFlushRate"/>.
     /// </summary>
-    /// <param name="m">The monitor to use.</param>
+    /// <param name="monitor">The monitor to use.</param>
     /// <param name="timerSpan">Indicative timer duration.</param>
-    public ValueTask OnTimerAsync( IActivityMonitor m, TimeSpan timerSpan )
+    public ValueTask OnTimerAsync( IActivityMonitor monitor, TimeSpan timerSpan )
     {
         // Don't really care of the overflow here.
         if( --_countFlush == 0 )
@@ -76,7 +77,7 @@ public sealed class TextFile : IGrandOutputHandler
 
         if( --_countHousekeeping == 0 )
         {
-            _file.RunFileHousekeeping( m, _config.MinimumTimeSpanToKeep, _config.MaximumTotalKbToKeep * 1000L );
+            _file.RunFileHousekeeping( monitor, _config.MinimumTimeSpanToKeep, _config.MaximumTotalKbToKeep * 1000L );
             _countHousekeeping = _config.HousekeepingRate;
         }
         return ValueTask.CompletedTask;
@@ -88,10 +89,10 @@ public sealed class TextFile : IGrandOutputHandler
     /// must be a <see cref="TextFileConfiguration"/> with the exact same path
     /// for this reconfiguration to be applied.
     /// </summary>
-    /// <param name="m">The monitor to use.</param>
+    /// <param name="monitor">The monitor to use.</param>
     /// <param name="c">Configuration to apply.</param>
     /// <returns>True if the configuration applied.</returns>
-    public ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor m, IHandlerConfiguration c )
+    public ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor monitor, IHandlerConfiguration c )
     {
         if( c is not TextFileConfiguration cF || cF.Path != _config.Path ) return ValueTask.FromResult( false );
         _config = cF;
@@ -106,12 +107,22 @@ public sealed class TextFile : IGrandOutputHandler
     /// <summary>
     /// Closes the file if it is opened.
     /// </summary>
-    /// <param name="m">The monitor to use to track activity.</param>
-    public ValueTask DeactivateAsync( IActivityMonitor m )
+    /// <param name="monitor">The monitor to use to track activity.</param>
+    public ValueTask DeactivateAsync( IActivityMonitor monitor )
     {
-        m.Info( "Closing file for TextFile handler." );
+        monitor.Info( "Closing file for TextFile handler." );
         _file.Close();
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Closes the current file if it is opened and has at least one entry.
+    /// Does nothing otherwise and returns null.
+    /// <para>
+    /// This is exposed to support potential <see cref="GrandOutputHandlersAction"/> (or <see cref="GrandOutputHandlersAction{TResult}"/>)
+    /// that can be implemented to explicitly close the current file.
+    /// </para>
+    /// </summary>
+    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
+    public string? CloseCurrentFile() => _file.Close();
 }

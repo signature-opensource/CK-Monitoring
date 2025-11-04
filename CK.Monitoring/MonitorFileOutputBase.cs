@@ -135,12 +135,13 @@ public class MonitorFileOutputBase : IDisposable
     public bool IsOpened => _output != null;
 
     /// <summary>
-    /// Closes the file if it is currently opened.
-    /// Does nothing otherwise.
+    /// Closes the file if it is currently opened and has at least one entry.
+    /// Does nothing otherwise and returns null.
     /// </summary>
-    public void Close()
+    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
+    public string? Close()
     {
-        if( _output != null ) CloseCurrentFile();
+        return _output != null ? CloseCurrentFile() : null;
     }
 
     /// <summary>
@@ -284,11 +285,13 @@ public class MonitorFileOutputBase : IDisposable
     /// <summary>
     /// Closes the currently opened file.
     /// </summary>
-    protected virtual void CloseCurrentFile()
+    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
+    protected virtual string? CloseCurrentFile()
     {
-        Debug.Assert( _output != null && _basePath != null );
+        Throw.CheckState( _output != null && _basePath != null );
         string fName = _output.Name;
         _output.Dispose();
+        _output = null;
         if( _countRemainder == _maxCountPerFile )
         {
             // No entries were written: we try to delete file.
@@ -301,26 +304,21 @@ public class MonitorFileOutputBase : IDisposable
             {
                 // Forget it.
             }
+            return null;
         }
-        else
+        if( _useGzipCompression )
         {
-            if( _useGzipCompression )
+            const int bufferSize = 64 * 1024;
+            using( var source = new FileStream( fName, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.SequentialScan | FileOptions.DeleteOnClose ) )
+            using( var destination = FileUtil.CreateAndOpenUniqueTimedFile( _basePath, _fileNameSuffix, _openedTimeUtc, FileAccess.Write, FileShare.None, bufferSize, FileOptions.SequentialScan ) )
             {
-                const int bufferSize = 64 * 1024;
-                using( var source = new FileStream( fName, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, FileOptions.SequentialScan | FileOptions.DeleteOnClose ) )
-                using( var destination = FileUtil.CreateAndOpenUniqueTimedFile( _basePath, _fileNameSuffix, _openedTimeUtc, FileAccess.Write, FileShare.None, bufferSize, FileOptions.SequentialScan ) )
+                using( GZipStream gZipStream = new GZipStream( destination, CompressionLevel.Optimal ) )
                 {
-                    using( GZipStream gZipStream = new GZipStream( destination, CompressionLevel.Optimal ) )
-                    {
-                        source.CopyTo( gZipStream, bufferSize );
-                    }
+                    source.CopyTo( gZipStream, bufferSize );
                 }
-            }
-            else
-            {
-                FileUtil.MoveToUniqueTimedFile( fName, _basePath, _fileNameSuffix, _openedTimeUtc );
+                return destination.Name;
             }
         }
-        _output = null;
+        return FileUtil.MoveToUniqueTimedFile( fName, _basePath, _fileNameSuffix, _openedTimeUtc );
     }
 }
