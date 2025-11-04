@@ -175,7 +175,7 @@ public class MonitorFileOutputBase : IDisposable
     /// Automatically deletes files that are older than the specified <paramref name="timeSpanToKeep"/>,
     /// and those that would make the cumulated file size exceed <paramref name="totalBytesToKeep"/>.
     /// </summary>
-    /// <param name="m">The monitor to use when logging.</param>
+    /// <param name="monitor">The monitor to use when logging.</param>
     /// <param name="timeSpanToKeep">
     /// The minimum time during which log files should be kept.
     /// Log files within this span will never be deleted (even if they exceed <paramref name="totalBytesToKeep"/>).
@@ -186,7 +186,7 @@ public class MonitorFileOutputBase : IDisposable
     /// If zero, there is no size limit, only "time to keep" applies and all "old" files (<paramref name="timeSpanToKeep"/>
     /// MUST be positive) are deleted.
     /// </param>
-    public void RunFileHousekeeping( IActivityMonitor m, TimeSpan timeSpanToKeep, long totalBytesToKeep )
+    public void RunFileHousekeeping( IActivityMonitor monitor, TimeSpan timeSpanToKeep, long totalBytesToKeep )
     {
         if( _basePath == null ) return;
         if( timeSpanToKeep <= TimeSpan.Zero && totalBytesToKeep <= 0 )
@@ -246,7 +246,7 @@ public class MonitorFileOutputBase : IDisposable
             // Note: The comparer is a reverse comparer. The most RECENT log file is the FIRST.
             candidates.Sort( ( a, b ) => DateTime.Compare( b.Key, a.Key ) );
             candidates.RemoveRange( 0, preservedByDateCount );
-            m.Debug( $"Considering {candidates.Count} log files to delete." );
+            monitor.Debug( $"Considering {candidates.Count} log files to delete." );
 
             long totalFileSize = byteLengthOfPreservedByDate;
             foreach( var kvp in candidates )
@@ -255,14 +255,14 @@ public class MonitorFileOutputBase : IDisposable
                 totalFileSize += file.Length;
                 if( totalFileSize > totalBytesToKeep )
                 {
-                    m.Trace( $"Deleting file {file.FullName} (housekeeping)." );
+                    monitor.Trace( $"Deleting file {file.FullName} (housekeeping)." );
                     try
                     {
                         file.Delete();
                     }
                     catch( Exception ex )
                     {
-                        m.Warn( $"Failed to delete file {file.FullName} (housekeeping).", ex );
+                        monitor.Warn( $"Failed to delete file {file.FullName} (housekeeping).", ex );
                     }
                 }
             }
