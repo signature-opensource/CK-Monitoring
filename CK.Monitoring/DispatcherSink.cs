@@ -187,20 +187,6 @@ public sealed partial class DispatcherSink
                 {
                     await action.DoRunAsync( monitor, _handlerList ??= new HandlerList( this ) );
                 }
-                else if( o is IGrandOutputHandler toAdd )
-                {
-                    if( await SafeActivateOrDeactivateAsync( monitor, toAdd, true ) )
-                    {
-                        _handlers.Add( toAdd );
-                    }
-                }
-                else if( o is Handlers.IDynamicGrandOutputHandler dH )
-                {
-                    if( await SafeActivateOrDeactivateAsync( monitor, dH.Handler, false ) )
-                    {
-                        _handlers.Remove( dH.Handler );
-                    }
-                }
                 else if( o is TaskCompletionSource asyncWait )
                 {
                     asyncWait.SetResult();
@@ -567,15 +553,4 @@ public sealed partial class DispatcherSink
             ExternalLog( LogLevel.Fatal, GrandOutput.UnhandledException, $"AppDomain.CurrentDomain.UnhandledException raised with Exception object '{exText}'." );
         }
     }
-
-    internal void AddDynamicHandler( IGrandOutputHandler handler )
-    {
-        _queue.Writer.TryWrite( handler );
-    }
-
-    internal void RemoveDynamicHandler( Handlers.IDynamicGrandOutputHandler handler )
-    {
-        _queue.Writer.TryWrite( handler );
-    }
-
 }

@@ -4,10 +4,19 @@ using CK.Core;
 
 namespace CK.Monitoring;
 
+/// <summary>
+/// Template method of an action on the <see cref="DispatcherSink.HandlerList"/> with a result.
+/// <para>
+/// This is submitted thanks to <see cref="DispatcherSink.Submit(IGrandOutputHandlersActionBase)"/>.
+/// </para>
+/// </summary>
 public abstract class GrandOutputHandlersAction<TResult> : IGrandOutputHandlersActionBase
 {
     TaskCompletionSource<TResult> _tcs;
 
+    /// <summary>
+    /// Initializes a new <see cref="GrandOutputHandlersAction{TResult}"/>.
+    /// </summary>
     protected GrandOutputHandlersAction()
     {
         _tcs = new TaskCompletionSource<TResult>();

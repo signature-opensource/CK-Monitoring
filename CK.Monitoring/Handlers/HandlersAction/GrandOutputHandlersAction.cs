@@ -7,11 +7,17 @@ namespace CK.Monitoring;
 /// <summary>
 /// Template method of an action on the <see cref="DispatcherSink.HandlerList"/> (without result).
 /// Use <see cref="GrandOutputHandlersAction{TResult}"/> when a result is needed.
+/// <para>
+/// This is submitted thanks to <see cref="DispatcherSink.Submit(IGrandOutputHandlersActionBase)"/>.
+/// </para>
 /// </summary>
 public abstract class GrandOutputHandlersAction : IGrandOutputHandlersActionBase
 {
     TaskCompletionSource _tcs;
 
+    /// <summary>
+    /// Initializes a new <see cref="GrandOutputHandlersAction"/>.
+    /// </summary>
     protected GrandOutputHandlersAction()
     {
         _tcs = new TaskCompletionSource();

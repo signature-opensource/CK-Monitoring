@@ -9,7 +9,7 @@ namespace CK.Monitoring;
 public sealed partial class DispatcherSink
 {
     /// <summary>
-    /// List of the current activated <see cref="IGrandOutputHandler"/>.
+    /// Exposes the list of the current activated <see cref="IGrandOutputHandler"/> and enables to add/remove handlers from it.
     /// This is visible only to <see cref="GrandOutputHandlersAction"/> and <see cref="GrandOutputHandlersAction{TResult}"/>.
     /// </summary>
     public sealed class HandlerList
@@ -73,6 +73,58 @@ public sealed partial class DispatcherSink
             _sink._handlers.RemoveAt( idx );
             return success;
         }
+    }
+
+
+    sealed class AddRemoveHandler : GrandOutputHandlersAction<bool>
+    {
+        readonly IGrandOutputHandler _handler;
+        readonly bool _add;
+
+        public AddRemoveHandler( IGrandOutputHandler handler, bool add )
+        {
+            _handler = handler;
+            _add = add;
+        }
+
+        protected override ValueTask<bool> RunAsync( IActivityMonitor monitor, HandlerList handlers )
+        {
+            return _add ? handlers.AddAsync( monitor, _handler ) : handlers.RemoveAsync( monitor, _handler );
+        }
+    }
+
+    /// <summary>
+    /// Adds a <see cref="IGrandOutputHandler"/>. See <see cref="HandlerList.AddAsync(IActivityMonitor, IGrandOutputHandler)"/>.
+    /// </summary>
+    /// <param name="handler">The handler to add.</param>
+    /// <returns>True on success, false on error.</returns>
+    public Task<bool> AddHandlerAsync( IGrandOutputHandler handler ) => AddRemoveHandlerAsync( handler, true );
+
+    /// <summary>
+    /// Adds a <see cref="IGrandOutputHandler"/>. See <see cref="HandlerList.RemoveAsync(IActivityMonitor, IGrandOutputHandler)"/>.
+    /// </summary>
+    /// <param name="handler">The handler to remove.</param>
+    /// <returns>True on success, false on error.</returns>
+    public Task<bool> RemoveHandlerAsync( IGrandOutputHandler handler ) => AddRemoveHandlerAsync( handler, false );
+
+    /// <summary>
+    /// Adds a <see cref="IGrandOutputHandler"/> without waiting for its actual addition.
+    /// </summary>
+    /// <param name="handler">The handler to add.</param>
+    public void SubmitAddHandler( IGrandOutputHandler handler ) => _ = AddRemoveHandlerAsync( handler, true );
+
+    /// <summary>
+    /// Removes a <see cref="IGrandOutputHandler"/> without waiting for its actual removing.
+    /// See <see cref="HandlerList.RemoveAsync(IActivityMonitor, IGrandOutputHandler)"/>.
+    /// </summary>
+    /// <param name="handler">The handler to remove.</param>
+    public void SubmitRemoveHandler( IGrandOutputHandler handler ) => _ = AddRemoveHandlerAsync( handler, false );
+
+    Task<bool> AddRemoveHandlerAsync( IGrandOutputHandler handler, bool add )
+    {
+        var a = new AddRemoveHandler( handler, add );
+        _queue.Writer.TryWrite( a );
+        return a.Completion;
     }
 
 }
