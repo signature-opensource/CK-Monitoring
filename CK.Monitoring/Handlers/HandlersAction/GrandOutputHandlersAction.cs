@@ -25,6 +25,10 @@ public abstract class GrandOutputHandlersAction : IGrandOutputHandlersActionBase
 
     /// <summary>
     /// Must implement the action on the <paramref name="handlers"/>.
+    /// <para>
+    /// This should NOT call <see cref="IGrandOutputHandler.ActivateAsync(IActivityMonitor)"/> or <see cref="IGrandOutputHandler.DeactivateAsync(IActivityMonitor)"/>:
+    /// instead use <see cref="DispatcherSink.HandlerList.AddAsync(IActivityMonitor, IGrandOutputHandler)"/> and <see cref="DispatcherSink.HandlerList.RemoveAsync(IActivityMonitor, IGrandOutputHandler)"/>.
+    /// </para>
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     /// <param name="handlers">The handler list.</param>
