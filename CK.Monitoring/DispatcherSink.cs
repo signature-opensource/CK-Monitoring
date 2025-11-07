@@ -459,6 +459,7 @@ public sealed partial class DispatcherSink
     public void Submit( IGrandOutputHandlersActionBase action )
     {
         Throw.CheckNotNullArgument( action );
+        Throw.CheckArgument( "A GrandOutputHandlersAction can be used only once.", !action.Completion.IsCompleted );
         _queue.Writer.TryWrite( action );
     }
 
