@@ -120,9 +120,18 @@ public sealed class TextFile : IGrandOutputHandler
     /// Does nothing otherwise and returns null.
     /// <para>
     /// This is exposed to support potential <see cref="GrandOutputHandlersAction"/> (or <see cref="GrandOutputHandlersAction{TResult}"/>)
-    /// that can be implemented to explicitly close the current file.
+    /// that can be implemented to explicitly close (or forget) the current file.
     /// </para>
     /// </summary>
-    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
-    public string? CloseCurrentFile() => _file.Close();
+    /// <param name="forgetCurrentFile">
+    /// Suppress the current file, forgetting its content.
+    /// <para>
+    /// This is to be used in very special scenarii!
+    /// </para>
+    /// </param>
+    /// <returns>
+    /// The full path of the closed file.
+    /// Null if no file has been created because it would have been empty or <paramref name="forgetCurrentFile"/> is true.
+    /// </returns>
+    public string? CloseCurrentFile( bool forgetCurrentFile = false ) => _file.Close( forgetCurrentFile );
 }

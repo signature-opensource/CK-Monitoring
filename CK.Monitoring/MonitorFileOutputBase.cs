@@ -97,7 +97,7 @@ public class MonitorFileOutputBase : IDisposable
                 _maxCountPerFile = value;
                 if( _output != null && alreadyWritten >= _maxCountPerFile )
                 {
-                    CloseCurrentFile();
+                    DoCloseCurrentFile();
                 }
             }
         }
@@ -135,13 +135,21 @@ public class MonitorFileOutputBase : IDisposable
     public bool IsOpened => _output != null;
 
     /// <summary>
-    /// Closes the file if it is currently opened and has at least one entry.
-    /// Does nothing otherwise and returns null.
+    /// Closes (and optionally forgets) the currently opened file (if it has at least one entry) and renames it.
     /// </summary>
-    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
-    public string? Close()
+    /// <param name="forgetCurrentFile">
+    /// Suppress the current file, forgetting its content.
+    /// <para>
+    /// This is to be used in very special scenarii!
+    /// </para>
+    /// </param>
+    /// <returns>
+    /// The full path of the closed file.
+    /// Null if no file has been created because it would have been empty or <paramref name="forgetCurrentFile"/> is true.
+    /// </returns>
+    public string? Close( bool forgetCurrentFile = false )
     {
-        return _output != null ? CloseCurrentFile() : null;
+        return _output != null ? DoCloseCurrentFile( forgetCurrentFile ) : null;
     }
 
     /// <summary>
@@ -160,17 +168,14 @@ public class MonitorFileOutputBase : IDisposable
     {
         if( --_countRemainder == 0 )
         {
-            CloseCurrentFile();
+            DoCloseCurrentFile();
         }
     }
 
     /// <summary>
     /// Simply calls <see cref="Close"/>.
     /// </summary>
-    public void Dispose()
-    {
-        Close();
-    }
+    public void Dispose() => Close();
 
     /// <summary>
     /// Automatically deletes files that are older than the specified <paramref name="timeSpanToKeep"/>,
@@ -282,20 +287,17 @@ public class MonitorFileOutputBase : IDisposable
         return _output;
     }
 
-    /// <summary>
-    /// Closes the currently opened file.
-    /// </summary>
-    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
-    protected virtual string? CloseCurrentFile()
+    /// <inheritdoc cref="Close(bool)"/>
+    protected virtual string? DoCloseCurrentFile( bool forgetCurrentFile = false )
     {
         Throw.CheckState( _output != null && _basePath != null );
         string fName = _output.Name;
         _output.Dispose();
         _output = null;
-        if( _countRemainder == _maxCountPerFile )
+        if( forgetCurrentFile || _countRemainder == _maxCountPerFile )
         {
-            // No entries were written: we try to delete file.
-            // If this fails, this is not an issue.
+            // No entries were written (or we must forget the file):
+            // we try to delete file. If this fails, this is not an issue.
             try
             {
                 File.Delete( fName );

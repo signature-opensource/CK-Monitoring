@@ -110,15 +110,14 @@ public class MonitorBinaryFileOutput : MonitorFileOutputBase
         return s;
     }
 
-    /// <summary>
-    /// Called when the current file is closed.
-    /// </summary>
-    /// <returns>The full path of the closed file. Null if no file has been created because it would have been empty.</returns>
-    protected override string? CloseCurrentFile()
+    /// <inheritdoc />
+    protected override string? DoCloseCurrentFile( bool forgetCurrentFile = false )
     {
         Throw.CheckState( _writer != null );
-        _writer.Write( (byte)0 );
-        var closedFilePath = base.CloseCurrentFile();
+        // Rather useless but cleaner: don't write if we know that the file will
+        // be forgotten.
+        if( !forgetCurrentFile ) _writer.Write( (byte)0 );
+        var closedFilePath = base.DoCloseCurrentFile( forgetCurrentFile );
         _writer.Dispose();
         _writer = null;
         return closedFilePath;
