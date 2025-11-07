@@ -31,6 +31,11 @@ public sealed class TextFile : IGrandOutputHandler
     }
 
     /// <summary>
+    /// Gets the <see cref="FileConfigurationBase.Path"/> that is the key to identify this handler among other file handlers.
+    /// </summary>
+    public string KeyPath => _config.Path;
+
+    /// <summary>
     /// Initialization of the handler: computes the path.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
