@@ -25,8 +25,8 @@ public sealed class TextFile : IGrandOutputHandler
         Throw.CheckNotNullArgument( config );
         _config = config;
         _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false );
-        _countFlush = _config.AutoFlushRate;
-        _countHousekeeping = _config.HousekeepingRate;
+        _countFlush = config.AutoFlushRate;
+        _countHousekeeping = config.HousekeepingRate;
         _shouldHandleMetrics = config.HandleMetrics;
     }
 
@@ -55,13 +55,12 @@ public sealed class TextFile : IGrandOutputHandler
     /// <param name="logEvent">The log entry.</param>
     public ValueTask HandleAsync( IActivityMonitor monitor, InputLogEntry logEvent )
     {
-        if( _shouldHandleMetrics
+        if( !_shouldHandleMetrics
             && logEvent.MonitorId == ActivityMonitor.StaticLogMonitorUniqueId
             && logEvent.Tags.Overlaps( _metricsTag ) )
         {
-
+            return ValueTask.CompletedTask;
         }
-
         _file.Write( logEvent );
         return ValueTask.CompletedTask;
     }
