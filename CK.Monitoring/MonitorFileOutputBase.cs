@@ -3,9 +3,13 @@ using CK.Monitoring.Handlers;
 using CommunityToolkit.HighPerformance;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Threading;
+using System.Xml.Linq;
 
 namespace CK.Monitoring;
 
@@ -23,6 +27,9 @@ public class MonitorFileOutputBase : IDisposable
     bool _useGzipCompression;
     bool _timeFolderMode;
 
+    // The result of the _configPath.
+    string? _rootPath;
+    // Either _rootPath or the _rootPath/TimedFolder.
     string? _basePath;
     FileStream? _output;
     DateTime _openedTimeUtc;
@@ -115,6 +122,12 @@ public class MonitorFileOutputBase : IDisposable
     public bool TimeFolderMode => _timeFolderMode;
 
     /// <summary>
+    /// Gets whether this object is initialized.
+    /// </summary>
+    [MemberNotNullWhen( true, nameof( _rootPath ), nameof( _basePath ) )]
+    public bool IsInitialized => _basePath != null;
+
+    /// <summary>
     /// Checks whether this <see cref="MonitorFileOutputBase"/> is valid: its base path is successfully created.
     /// Can be called multiple times.
     /// </summary>
@@ -128,23 +141,38 @@ public class MonitorFileOutputBase : IDisposable
 
     bool DoInitialize( IActivityMonitor monitor )
     {
-        string? b = ComputeBasePath( monitor, _configPath, _timeFolderMode );
-        if( b != null )
+        // Computes the root path only once.
+        if( _rootPath == null )
         {
-            try
+            _rootPath = ComputeRootPath( monitor, _configPath );
+            if( _rootPath == null ) return false;
+        }
+        if( _timeFolderMode )
+        {
+            // Even if we call DoInitialize multiple times in TimedFolder mode, keeps
+            // the current, initial, folder name if it is set to a folder that is not the root path.
+            if( _basePath == null || _basePath == _rootPath )
             {
-                Directory.CreateDirectory( b );
-                _basePath = b;
-                return true;
+                _basePath = _rootPath + DateTime.UtcNow.ToString( FileUtil.FileNameUniqueTimeUtcFormat ) + Path.DirectorySeparatorChar;
             }
-            catch( Exception ex )
-            {
-                monitor.Error( ex );
-            }
+        }
+        else
+        {
+            // No TimedFolder mode: the base path is the root path.
+            _basePath = _rootPath;
+        }
+        try
+        {
+            Directory.CreateDirectory( _basePath );
+            return true;
+        }
+        catch( Exception ex )
+        {
+            monitor.Error( ex );
         }
         return false;
 
-        static string? ComputeBasePath( IActivityMonitor monitor, string configPath, bool timedFolderMode )
+        static string? ComputeRootPath( IActivityMonitor monitor, string configPath )
         {
             string? rootPath = null;
             if( String.IsNullOrWhiteSpace( configPath ) ) monitor.Error( "The configured path is empty." );
@@ -162,20 +190,122 @@ public class MonitorFileOutputBase : IDisposable
                     }
                 }
             }
-            if( rootPath == null )
-            {
-                return null;
-            }
-            if( timedFolderMode )
-            {
-                rootPath = Path.Combine( rootPath, DateTime.UtcNow.ToString( FileUtil.FileNameUniqueTimeUtcFormat ) );
-            }
-            return FileUtil.NormalizePathSeparator( rootPath, true );
+            return rootPath != null ? FileUtil.NormalizePathSeparator( rootPath, true ) : null;
         }
-
     }
 
+    /// <summary>
+    /// Applies the <see cref="TimedFolderConfiguration.MaxCurrentLogFolderCount"/> and <see cref="TimedFolderConfiguration.MaxArchivedLogFolderCount"/>.
+    /// Does nothing if <see cref="TimedFolderConfiguration.Enabled"/> is false.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="c">The TimedFolder configuration to apply.</param>
+    /// <returns>True on success, false on error.</returns>
+    public bool RunTimedFolderCleanup( IActivityMonitor monitor, TimedFolderConfiguration c )
+    {
+        Throw.CheckState( IsInitialized );
+        if( c.Enabled )
+        {
+            // Note: The comparer is a reverse comparer. The most RECENT timed folder is the FIRST.
+            GetTimedFolders( _rootPath, _basePath, out SortedDictionary<DateTime, string> timedFolders, out string? archivePath );
+            if( timedFolders.Count > c.MaxCurrentLogFolderCount )
+            {
+                int retryCount = 5;
+                retry:
+                try
+                {
+                    if( archivePath == null )
+                    {
+                        monitor.Trace( "Creating Archive folder." );
+                        Directory.CreateDirectory( archivePath = _basePath + "Archive" );
+                    }
+                    foreach( var old in timedFolders.Values.Skip( c.MaxCurrentLogFolderCount ) )
+                    {
+                        var fName = Path.GetFileName( old );
+                        monitor.Trace( $"Moving '{fName}' folder into Archive folder." );
+                        var target = Path.Combine( archivePath, fName );
+                        if( Directory.Exists( target ) )
+                        {
+                            target += '-' + Guid.NewGuid().ToString();
+                        }
+                        try
+                        {
+                            Directory.Move( old, target );
+                        }
+                        catch( Exception ex )
+                        {
+                            monitor.Warn( $"Error while moving folder '{fName}' into 'Archive/'.", ex );
+                        }
+                    }
+                    int maxArchive = c.MaxArchivedLogFolderCount;
+                    if( maxArchive > 0 )
+                    {
+                        GetTimedFolders( archivePath, null, out timedFolders, out _ );
+                        foreach( var tooOld in timedFolders.Values.Skip( maxArchive ) )
+                        {
+                            try
+                            {
+                                Directory.Delete( tooOld, recursive: true );
+                            }
+                            catch( Exception ex )
+                            {
+                                monitor.Warn( $"While deleting 'Archive/{Path.GetFileName( tooOld.AsSpan() )}'.", ex );
+                            }
+                        }
+                    }
+                }
+                catch( Exception ex )
+                {
+                    if( --retryCount < 0 )
+                    {
+                        monitor.Error( $"Aborting Log's cleanup of timed folders in '{_basePath}' after 5 retries.", ex );
+                        return false;
+                    }
+                    monitor.Warn( $"Log's cleanup of timed folders in '{_basePath}' failed. Retrying in {retryCount * 100} ms.", ex );
+                    Thread.Sleep( retryCount * 100 );
+                    goto retry;
+                }
+            }
+        }
+        return true;
 
+        static void GetTimedFolders( string folder,
+                                     string? currentBasepath,
+                                     out SortedDictionary<DateTime, string> timedFolders,
+                                     out string? archivePath )
+        {
+            timedFolders = new SortedDictionary<DateTime, string>( Comparer<DateTime>.Create( ( x, y ) => y.CompareTo( x ) ) );
+            bool inRoot = currentBasepath != null;
+            archivePath = null;
+            foreach( var d in Directory.EnumerateDirectories( folder ) )
+            {
+                var name = d.AsSpan( folder.Length );
+                if( inRoot && name.Equals( "Archive", StringComparison.OrdinalIgnoreCase ) )
+                {
+                    archivePath = d + FileUtil.DirectorySeparatorString;
+                }
+                else if( FileUtil.TryMatchFileNameUniqueTimeUtcFormat( ref name, out DateTime date ) )
+                {
+                    // If we are in "Archive/", we allow the directory name to have a suffix (the -Guid on duplicates).
+                    if( inRoot )
+                    {
+                        // When not in "Archive/", the directory name must be the time format without suffix to be considered.
+                        if( !name.IsEmpty ) continue;
+                        // And it must not be the current _basePath. If it's the case, we ignore it: it doesn't count as
+                        // an existing Timed folder.
+                        Throw.DebugAssert( currentBasepath != null && currentBasepath[^1] == Path.DirectorySeparatorChar );
+                        if( d.Length == currentBasepath.Length - 1
+                            && currentBasepath.AsSpan( 0, d.Length ).Equals( d, StringComparison.Ordinal ) )
+                        {
+                            continue;
+                        }
+                    }
+                    // Take no risk: ignore (highly unlikely to happen) duplicates. 
+                    timedFolders[date] = d;
+                }
+            }
+        }
+    }
 
     /// <summary>
     /// Gets whether this file is currently opened.

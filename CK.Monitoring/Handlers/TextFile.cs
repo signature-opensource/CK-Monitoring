@@ -37,15 +37,14 @@ public sealed class TextFile : IGrandOutputHandler
     public string KeyPath => _config.Path;
 
     /// <summary>
-    /// Initialization of the handler: computes the path.
+    /// Initialization of the handler: initializes the file and runs TimedFolder cleanup if configured.
     /// </summary>
     /// <param name="monitor">The monitor to use.</param>
     public ValueTask<bool> ActivateAsync( IActivityMonitor monitor )
     {
         using( monitor.OpenTrace( $"Initializing TextFile handler (MaxCountPerFile = {_file.MaxCountPerFile})." ) )
         {
-            _file.Initialize( monitor );
-            return ValueTask.FromResult( true );
+            return ValueTask.FromResult( _file.Initialize( monitor ) && _file.RunTimedFolderCleanup( monitor, _config.TimeFolderMode ) );
         }
     }
 

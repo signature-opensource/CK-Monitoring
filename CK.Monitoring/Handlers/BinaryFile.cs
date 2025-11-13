@@ -31,15 +31,15 @@ public class BinaryFile : IGrandOutputHandler
     public string KeyPath => _config.Path;
 
     /// <summary>
-    /// Initialization of the handler: computes the path.
+    /// Initialization of the handler: initializes the file and runs TimedFolder cleanup if configured.
     /// </summary>
-    /// <param name="monitor"></param>
+    /// <param name="monitor">The monitor to use.</param>
     public ValueTask<bool> ActivateAsync( IActivityMonitor monitor )
     {
         Throw.CheckNotNullArgument( monitor );
         using( monitor.OpenTrace( $"Initializing BinaryFile handler (MaxCountPerFile = {_file.MaxCountPerFile})." ) )
         {
-            return ValueTask.FromResult( _file.Initialize( monitor ) );
+            return ValueTask.FromResult( _file.Initialize( monitor ) && _file.RunTimedFolderCleanup( monitor, _config.TimeFolderMode ) );
         }
     }
 
