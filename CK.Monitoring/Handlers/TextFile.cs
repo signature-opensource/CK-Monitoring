@@ -24,7 +24,8 @@ public sealed class TextFile : IGrandOutputHandler
     {
         Throw.CheckNotNullArgument( config );
         _config = config;
-        _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false );
+        var rootPath = config.Path;
+        _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false, config.TimeFolderMode.Enabled );
         _countFlush = config.AutoFlushRate;
         _countHousekeeping = config.HousekeepingRate;
         _shouldHandleMetrics = config.HandleMetrics;
@@ -100,12 +101,11 @@ public sealed class TextFile : IGrandOutputHandler
     {
         if( c is not TextFileConfiguration cF || cF.Path != _config.Path ) return ValueTask.FromResult( false );
         _config = cF;
-        _file.MaxCountPerFile = cF.MaxCountPerFile;
         _file.Flush();
         _countFlush = _config.AutoFlushRate;
         _countHousekeeping = _config.HousekeepingRate;
         _shouldHandleMetrics = _config.HandleMetrics;
-        return ValueTask.FromResult( true );
+        return ValueTask.FromResult( _file.Reconfigure( monitor, maxCountPerFile: cF.MaxCountPerFile, timeFolderMode: cF.TimeFolderMode.Enabled ) );
     }
 
     /// <summary>

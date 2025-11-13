@@ -1,4 +1,6 @@
 using CK.Core;
+using CK.Monitoring.Handlers;
+using System;
 using System.Diagnostics;
 using System.IO;
 
@@ -22,8 +24,9 @@ public class MonitorTextFileOutput : MonitorFileOutputBase
     /// <param name="configuredPath">The path: it can be absolute and when relative, it will be under <see cref="LogFile.RootLogPath"/> (that must be set).</param>
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
-    public MonitorTextFileOutput( string configuredPath, int maxCountPerFile, bool useGzipCompression )
-        : base( configuredPath, ".log" + (useGzipCompression ? ".gzip" : string.Empty), maxCountPerFile, useGzipCompression )
+    /// <param name="timedFolderMode">True to create a TimedFolder for the log files.</param>
+    public MonitorTextFileOutput( string configuredPath, int maxCountPerFile, bool useGzipCompression, bool timedFolderMode )
+        : base( configuredPath, ".log" + (useGzipCompression ? ".gzip" : string.Empty), maxCountPerFile, useGzipCompression, timedFolderMode )
     {
         _builder = new MulticastLogEntryTextBuilder( false, false );
     }

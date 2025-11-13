@@ -9,7 +9,7 @@ namespace CK.Monitoring.Handlers;
 /// </summary>
 public class BinaryFile : IGrandOutputHandler
 {
-    MonitorBinaryFileOutput _file;
+    readonly MonitorBinaryFileOutput _file;
     BinaryFileConfiguration _config;
     int _countHousekeeping;
 
@@ -20,7 +20,7 @@ public class BinaryFile : IGrandOutputHandler
     public BinaryFile( BinaryFileConfiguration config )
     {
         Throw.CheckNotNullArgument( config );
-        _file = new MonitorBinaryFileOutput( config.Path, config.MaxCountPerFile, config.UseGzipCompression );
+        _file = new MonitorBinaryFileOutput( config.Path, config.MaxCountPerFile, config.UseGzipCompression, config.TimeFolderMode.Enabled );
         _config = config;
         _countHousekeeping = _config.HousekeepingRate;
     }
@@ -72,28 +72,17 @@ public class BinaryFile : IGrandOutputHandler
     /// <summary>
     /// Attempts to apply configuration if possible.
     /// </summary>
-    /// <param name="m">The monitor to use.</param>
+    /// <param name="monitor">The monitor to use.</param>
     /// <param name="c">Configuration to apply.</param>
     /// <returns>True if the configuration applied.</returns>
-    public ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor m, IHandlerConfiguration c )
+    public ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor monitor, IHandlerConfiguration c )
     {
         if( c is not BinaryFileConfiguration cF || cF.Path != _config.Path ) return ValueTask.FromResult( false );
-
-        if( _config.UseGzipCompression != cF.UseGzipCompression )
-        {
-            var f = new MonitorBinaryFileOutput( _config.Path, cF.MaxCountPerFile, cF.UseGzipCompression );
-            // If the initialization of the new file fails (should not happen), we fail to apply the configuration:
-            // this handler will be Deactivated and another one will be created... and it may work. Who knows...
-            if( !f.Initialize( m ) ) return ValueTask.FromResult( false );
-            _file.Close();
-            _file = f;
-        }
-        else
-        {
-            _file.MaxCountPerFile = cF.MaxCountPerFile;
-        }
         _config = cF;
-        return ValueTask.FromResult( true );
+        return ValueTask.FromResult( _file.Reconfigure( monitor,
+                                                        maxCountPerFile: cF.MaxCountPerFile,
+                                                        useGzipCompression: cF.UseGzipCompression,
+                                                        timeFolderMode: cF.TimeFolderMode.Enabled ) );
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using CK.Core;
+using CK.Monitoring.Handlers;
 using CommunityToolkit.HighPerformance;
 using System;
 using System.Collections.Generic;
@@ -10,21 +11,22 @@ namespace CK.Monitoring;
 
 /// <summary>
 /// Helper class that encapsulates temporary stream and final renaming for log entries streams.
-/// This currently handles only the maximum count of entries per file but this may be extended with options like "SubFolderMode" that can be based 
-/// on current time (to group logs inside timed intermediate folders like one per day: 2014/01/12 or 2014-01/12, etc.). 
+/// This handles the maximum count of entries per file and a <see cref="Handlers.TimedFolderConfiguration"/>. 
 /// </summary>
 public class MonitorFileOutputBase : IDisposable
 {
-    readonly string _configPath;
-    readonly string _fileNameSuffix;
-    readonly bool _useGzipCompression;
+    const int _fileBufferSize = 4096;
 
+    readonly string _configPath;
+    string _fileNameSuffix;
     int _maxCountPerFile;
+    bool _useGzipCompression;
+    bool _timeFolderMode;
+
     string? _basePath;
     FileStream? _output;
     DateTime _openedTimeUtc;
     int _countRemainder;
-    readonly int _fileBufferSize;
 
     /// <summary>
     /// Initializes a new file for <see cref="IFullLogEntry"/>: the final file name is based on <see cref="FileUtil.FileNameUniqueTimeUtcFormat"/> with a ".ckmon" extension.
@@ -34,7 +36,12 @@ public class MonitorFileOutputBase : IDisposable
     /// <param name="fileNameSuffix">Suffix of the file including its extension. Must not be null nor empty.</param>
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
-    protected MonitorFileOutputBase( string configuredPath, string fileNameSuffix, int maxCountPerFile, bool useGzipCompression )
+    /// <param name="timeFolderMode">Whether a timed folder must be created under the <paramref name="configuredPath"/>.</param>
+    protected MonitorFileOutputBase( string configuredPath,
+                                     string fileNameSuffix,
+                                     int maxCountPerFile,
+                                     bool useGzipCompression,
+                                     bool timeFolderMode )
     {
         Throw.CheckNotNullArgument( configuredPath );
         Throw.CheckNotNullOrEmptyArgument( fileNameSuffix );
@@ -42,67 +49,70 @@ public class MonitorFileOutputBase : IDisposable
         _configPath = configuredPath;
         _maxCountPerFile = maxCountPerFile;
         _fileNameSuffix = fileNameSuffix;
-        _fileBufferSize = 4096;
         _useGzipCompression = useGzipCompression;
+        _timeFolderMode = timeFolderMode;
     }
 
     /// <summary>
-    /// Initializes a new file for <see cref="IBaseLogEntry"/> issued from a specific monitor: the final file name is 
-    /// based on <see cref="FileUtil.FileNameUniqueTimeUtcFormat"/> with a "-{XXX...XXX}.ckmon" suffix where {XXX...XXX} is the unique identifier (Guid with the B format - 32 digits separated by 
-    /// hyphens, enclosed in braces) of the monitor.
-    /// You must call <see cref="Initialize"/> before actually using this object.
+    /// Reconfigures this file output.
     /// </summary>
-    /// <param name="configuredPath">The path. Can be absolute. When relative, it will be under <see cref="LogFile.RootLogPath"/> that must be set.</param>
-    /// <param name="monitorId">Monitor identifier.</param>
-    /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
-    /// <param name="useGzipCompression">True to gzip the file.</param>
-    protected MonitorFileOutputBase( string configuredPath, Guid monitorId, int maxCountPerFile, bool useGzipCompression )
-        : this( configuredPath, '-' + monitorId.ToString( "B" ), maxCountPerFile, useGzipCompression )
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="fileNameSuffix">The new file name suffix if not null.</param>
+    /// <param name="maxCountPerFile">The new maximal number of entries per file if not null.</param>
+    /// <param name="useGzipCompression">The new GZip compression if not null.</param>
+    /// <param name="timeFolderMode">The new TimedFolder mode if not null.</param>
+    /// <returns>True on success, false otherwise.</returns>
+    public bool Reconfigure( IActivityMonitor monitor,
+                             string? fileNameSuffix = null,
+                             int? maxCountPerFile = null,
+                             bool? useGzipCompression = null,
+                             bool? timeFolderMode = null )
     {
-    }
-
-    /// <summary>
-    /// Computes the root path.
-    /// </summary>
-    /// <param name="m">A monitor (must not be null).</param>
-    /// <returns>The final path to use (ends with '\'). Null if unable to compute the path.</returns>
-    string? ComputeBasePath( IActivityMonitor m )
-    {
-        string? rootPath = null;
-        if( String.IsNullOrWhiteSpace( _configPath ) ) m.Error( "The configured path is empty." );
-        else if( FileUtil.IndexOfInvalidPathChars( _configPath ) >= 0 ) m.Error( $"The configured path '{_configPath}' is invalid." );
-        else
+        if( fileNameSuffix != null && _fileNameSuffix != fileNameSuffix )
         {
-            rootPath = _configPath;
-            if( !Path.IsPathRooted( rootPath ) )
+            Close();
+            _fileNameSuffix = fileNameSuffix;
+        }
+        if( maxCountPerFile.HasValue && maxCountPerFile.Value != _maxCountPerFile )
+        {
+            int alreadyWritten = _maxCountPerFile - _countRemainder;
+            _maxCountPerFile = maxCountPerFile.Value;
+            if( _output != null && alreadyWritten >= _maxCountPerFile )
             {
-                string? rootLogPath = LogFile.RootLogPath;
-                if( String.IsNullOrWhiteSpace( rootLogPath ) ) m.Error( $"The relative path '{_configPath}' requires that LogFile.RootLogPath be specified." );
-                else rootPath = Path.Combine( rootLogPath, _configPath );
+                Close();
             }
         }
-        return rootPath != null ? FileUtil.NormalizePathSeparator( rootPath, true ) : null;
+        if( useGzipCompression.HasValue && useGzipCompression.Value != _useGzipCompression )
+        {
+            Close();
+            _useGzipCompression = useGzipCompression.Value;
+        }
+        if( timeFolderMode.HasValue && timeFolderMode.Value != _timeFolderMode )
+        {
+            Close();
+            _timeFolderMode = timeFolderMode.Value;
+            if( !DoInitialize( monitor ) )
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>
     /// Gets the maximum number of entries per file.
     /// </summary>
-    public int MaxCountPerFile
-    {
-        get => _maxCountPerFile;
-        set
-        {
-            if( _maxCountPerFile != value )
-            {
-                int alreadyWritten = _maxCountPerFile - _countRemainder;
-                _maxCountPerFile = value;
-                if( _output != null && alreadyWritten >= _maxCountPerFile )
-                {
-                    DoCloseCurrentFile();
-                }
-            }
-        }
-    }
+    public int MaxCountPerFile => _maxCountPerFile;
+
+    /// <summary>
+    /// Gets whether the final file is GZiped.
+    /// </summary>
+    public bool UseGzipCompression => _useGzipCompression;
+
+    /// <summary>
+    /// Gets whether log files are in a timed folder.
+    /// </summary>
+    public bool TimeFolderMode => _timeFolderMode;
 
     /// <summary>
     /// Checks whether this <see cref="MonitorFileOutputBase"/> is valid: its base path is successfully created.
@@ -113,7 +123,12 @@ public class MonitorFileOutputBase : IDisposable
     {
         if( _basePath != null ) return true;
         Throw.CheckNotNullArgument( monitor );
-        string? b = ComputeBasePath( monitor );
+        return DoInitialize( monitor );
+    }
+
+    bool DoInitialize( IActivityMonitor monitor )
+    {
+        string? b = ComputeBasePath( monitor, _configPath, _timeFolderMode );
         if( b != null )
         {
             try
@@ -128,7 +143,39 @@ public class MonitorFileOutputBase : IDisposable
             }
         }
         return false;
+
+        static string? ComputeBasePath( IActivityMonitor monitor, string configPath, bool timedFolderMode )
+        {
+            string? rootPath = null;
+            if( String.IsNullOrWhiteSpace( configPath ) ) monitor.Error( "The configured path is empty." );
+            else if( FileUtil.IndexOfInvalidPathChars( configPath ) >= 0 ) monitor.Error( $"The configured path '{configPath}' is invalid." );
+            else
+            {
+                rootPath = configPath;
+                if( !Path.IsPathRooted( rootPath ) )
+                {
+                    string? rootLogPath = LogFile.RootLogPath;
+                    if( String.IsNullOrWhiteSpace( rootLogPath ) ) monitor.Error( $"The relative path '{configPath}' requires that LogFile.RootLogPath be specified." );
+                    else
+                    {
+                        rootPath = Path.Combine( rootLogPath, configPath );
+                    }
+                }
+            }
+            if( rootPath == null )
+            {
+                return null;
+            }
+            if( timedFolderMode )
+            {
+                rootPath = Path.Combine( rootPath, DateTime.UtcNow.ToString( FileUtil.FileNameUniqueTimeUtcFormat ) );
+            }
+            return FileUtil.NormalizePathSeparator( rootPath, true );
+        }
+
     }
+
+
 
     /// <summary>
     /// Gets whether this file is currently opened.
@@ -229,7 +276,7 @@ public class MonitorFileOutputBase : IDisposable
         // This is not a big deal to have a few empty folders for some time.
         // This method recurses on "Archive" folder name for simplicity.
         //
-        HandleTimedFolders( monitor,
+        HandleHousekeepingTimedFolders( monitor,
                             candidates,
                             ref preservedByDateCount,
                             ref byteLengthOfPreservedByDate,
@@ -266,20 +313,20 @@ public class MonitorFileOutputBase : IDisposable
         }
     }
 
-    void HandleTimedFolders( IActivityMonitor monitor,
-                             List<KeyValuePair<DateTime, FileInfo>> candidates,
-                             ref int preservedByDateCount,
-                             ref long byteLengthOfPreservedByDate,
-                             ref long totalByteLength,
-                             DateTime minDate,
-                             DirectoryInfo baseDirectory )
+    void HandleHousekeepingTimedFolders( IActivityMonitor monitor,
+                                         List<KeyValuePair<DateTime, FileInfo>> candidates,
+                                         ref int preservedByDateCount,
+                                         ref long byteLengthOfPreservedByDate,
+                                         ref long totalByteLength,
+                                         DateTime minDate,
+                                         DirectoryInfo baseDirectory )
     {
         foreach( var timedDirectory in baseDirectory.EnumerateDirectories() )
         {
             var lastName = Path.GetFileName( timedDirectory.FullName.AsSpan() );
             if( lastName.Equals( "Archive", StringComparison.OrdinalIgnoreCase ) )
             {
-                HandleTimedFolders( monitor,
+                HandleHousekeepingTimedFolders( monitor,
                                     candidates,
                                     ref preservedByDateCount,
                                     ref byteLengthOfPreservedByDate,
@@ -371,7 +418,8 @@ public class MonitorFileOutputBase : IDisposable
     protected virtual Stream OpenNewFile()
     {
         _openedTimeUtc = DateTime.UtcNow;
-        _output = FileUtil.CreateAndOpenUniqueTimedFile( _basePath + "T-", _fileNameSuffix + ".tmp",
+        _output = FileUtil.CreateAndOpenUniqueTimedFile( _basePath + "T-",
+                                                         _fileNameSuffix + ".tmp",
                                                          _openedTimeUtc,
                                                          FileAccess.Write,
                                                          FileShare.Read,
