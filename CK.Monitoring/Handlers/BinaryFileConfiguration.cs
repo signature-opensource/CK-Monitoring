@@ -26,6 +26,11 @@ public class BinaryFileConfiguration : FileConfigurationBase
             HousekeepingRate = HousekeepingRate,
             MinimumTimeSpanToKeep = MinimumTimeSpanToKeep,
             MaximumTotalKbToKeep = MaximumTotalKbToKeep,
+            TimedFolderMode =
+            {
+                MaxCurrentLogFolderCount = TimedFolderMode.MaxCurrentLogFolderCount,
+                MaxArchivedLogFolderCount = TimedFolderMode.MaxArchivedLogFolderCount
+            }
         };
     }
 }
