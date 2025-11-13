@@ -25,7 +25,7 @@ public class MonitorFileOutputBase : IDisposable
     string _fileNameSuffix;
     int _maxCountPerFile;
     bool _useGzipCompression;
-    bool _timeFolderMode;
+    bool _timedFolderMode;
 
     // The result of the _configPath.
     string? _rootPath;
@@ -43,12 +43,12 @@ public class MonitorFileOutputBase : IDisposable
     /// <param name="fileNameSuffix">Suffix of the file including its extension. Must not be null nor empty.</param>
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
-    /// <param name="timeFolderMode">Whether a timed folder must be created under the <paramref name="configuredPath"/>.</param>
+    /// <param name="timedFolderMode">Whether a timed folder must be created under the <paramref name="configuredPath"/>.</param>
     protected MonitorFileOutputBase( string configuredPath,
                                      string fileNameSuffix,
                                      int maxCountPerFile,
                                      bool useGzipCompression,
-                                     bool timeFolderMode )
+                                     bool timedFolderMode )
     {
         Throw.CheckNotNullArgument( configuredPath );
         Throw.CheckNotNullOrEmptyArgument( fileNameSuffix );
@@ -57,7 +57,7 @@ public class MonitorFileOutputBase : IDisposable
         _maxCountPerFile = maxCountPerFile;
         _fileNameSuffix = fileNameSuffix;
         _useGzipCompression = useGzipCompression;
-        _timeFolderMode = timeFolderMode;
+        _timedFolderMode = timedFolderMode;
     }
 
     /// <summary>
@@ -67,13 +67,13 @@ public class MonitorFileOutputBase : IDisposable
     /// <param name="fileNameSuffix">The new file name suffix if not null.</param>
     /// <param name="maxCountPerFile">The new maximal number of entries per file if not null.</param>
     /// <param name="useGzipCompression">The new GZip compression if not null.</param>
-    /// <param name="timeFolderMode">The new TimedFolder mode if not null.</param>
+    /// <param name="timedFolderMode">The new TimedFolder mode if not null.</param>
     /// <returns>True on success, false otherwise.</returns>
     public bool Reconfigure( IActivityMonitor monitor,
                              string? fileNameSuffix = null,
                              int? maxCountPerFile = null,
                              bool? useGzipCompression = null,
-                             bool? timeFolderMode = null )
+                             bool? timedFolderMode = null )
     {
         if( fileNameSuffix != null && _fileNameSuffix != fileNameSuffix )
         {
@@ -94,10 +94,10 @@ public class MonitorFileOutputBase : IDisposable
             Close();
             _useGzipCompression = useGzipCompression.Value;
         }
-        if( timeFolderMode.HasValue && timeFolderMode.Value != _timeFolderMode )
+        if( timedFolderMode.HasValue && timedFolderMode.Value != _timedFolderMode )
         {
             Close();
-            _timeFolderMode = timeFolderMode.Value;
+            _timedFolderMode = timedFolderMode.Value;
             if( !DoInitialize( monitor ) )
             {
                 return false;
@@ -119,7 +119,7 @@ public class MonitorFileOutputBase : IDisposable
     /// <summary>
     /// Gets whether log files are in a timed folder.
     /// </summary>
-    public bool TimeFolderMode => _timeFolderMode;
+    public bool TimedFolderMode => _timedFolderMode;
 
     /// <summary>
     /// Gets whether this object is initialized.
@@ -147,7 +147,7 @@ public class MonitorFileOutputBase : IDisposable
             _rootPath = ComputeRootPath( monitor, _configPath );
             if( _rootPath == null ) return false;
         }
-        if( _timeFolderMode )
+        if( _timedFolderMode )
         {
             // Even if we call DoInitialize multiple times in TimedFolder mode, keeps
             // the current, initial, folder name if it is set to a folder that is not the root path.

@@ -8,7 +8,7 @@ namespace CK.Monitoring.Handlers;
 /// </summary>
 public abstract class FileConfigurationBase : IHandlerConfiguration
 {
-    readonly TimedFolderConfiguration _timeFolderMode = new TimedFolderConfiguration();
+    readonly TimedFolderConfiguration _timedFolderMode = new TimedFolderConfiguration();
 
     /// <summary>
     /// Gets or sets the rate of file housekeeping tasks execution (automatic log file deletion).
@@ -61,7 +61,7 @@ public abstract class FileConfigurationBase : IHandlerConfiguration
     /// <summary>
     /// Gets the <see cref="TimedFolderConfiguration"/>.
     /// </summary>
-    public TimedFolderConfiguration TimeFolderMode => _timeFolderMode;
+    public TimedFolderConfiguration TimedFolderMode => _timedFolderMode;
 
     /// <summary>
     /// Clones this configuration.

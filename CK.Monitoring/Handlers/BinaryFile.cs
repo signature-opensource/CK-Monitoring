@@ -20,7 +20,7 @@ public class BinaryFile : IGrandOutputHandler
     public BinaryFile( BinaryFileConfiguration config )
     {
         Throw.CheckNotNullArgument( config );
-        _file = new MonitorBinaryFileOutput( config.Path, config.MaxCountPerFile, config.UseGzipCompression, config.TimeFolderMode.Enabled );
+        _file = new MonitorBinaryFileOutput( config.Path, config.MaxCountPerFile, config.UseGzipCompression, config.TimedFolderMode.Enabled );
         _config = config;
         _countHousekeeping = _config.HousekeepingRate;
     }
@@ -39,7 +39,7 @@ public class BinaryFile : IGrandOutputHandler
         Throw.CheckNotNullArgument( monitor );
         using( monitor.OpenTrace( $"Initializing BinaryFile handler (MaxCountPerFile = {_file.MaxCountPerFile})." ) )
         {
-            return ValueTask.FromResult( _file.Initialize( monitor ) && _file.RunTimedFolderCleanup( monitor, _config.TimeFolderMode ) );
+            return ValueTask.FromResult( _file.Initialize( monitor ) && _file.RunTimedFolderCleanup( monitor, _config.TimedFolderMode ) );
         }
     }
 
@@ -82,7 +82,7 @@ public class BinaryFile : IGrandOutputHandler
         return ValueTask.FromResult( _file.Reconfigure( monitor,
                                                         maxCountPerFile: cF.MaxCountPerFile,
                                                         useGzipCompression: cF.UseGzipCompression,
-                                                        timeFolderMode: cF.TimeFolderMode.Enabled ) );
+                                                        timedFolderMode: cF.TimedFolderMode.Enabled ) );
     }
 
     /// <summary>

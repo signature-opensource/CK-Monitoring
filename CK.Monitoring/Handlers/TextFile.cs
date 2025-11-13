@@ -25,7 +25,7 @@ public sealed class TextFile : IGrandOutputHandler
         Throw.CheckNotNullArgument( config );
         _config = config;
         var rootPath = config.Path;
-        _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false, config.TimeFolderMode.Enabled );
+        _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false, config.TimedFolderMode.Enabled );
         _countFlush = config.AutoFlushRate;
         _countHousekeeping = config.HousekeepingRate;
         _shouldHandleMetrics = config.HandleMetrics;
@@ -44,7 +44,7 @@ public sealed class TextFile : IGrandOutputHandler
     {
         using( monitor.OpenTrace( $"Initializing TextFile handler (MaxCountPerFile = {_file.MaxCountPerFile})." ) )
         {
-            return ValueTask.FromResult( _file.Initialize( monitor ) && _file.RunTimedFolderCleanup( monitor, _config.TimeFolderMode ) );
+            return ValueTask.FromResult( _file.Initialize( monitor ) && _file.RunTimedFolderCleanup( monitor, _config.TimedFolderMode ) );
         }
     }
 
@@ -104,7 +104,7 @@ public sealed class TextFile : IGrandOutputHandler
         _countFlush = _config.AutoFlushRate;
         _countHousekeeping = _config.HousekeepingRate;
         _shouldHandleMetrics = _config.HandleMetrics;
-        return ValueTask.FromResult( _file.Reconfigure( monitor, maxCountPerFile: cF.MaxCountPerFile, timeFolderMode: cF.TimeFolderMode.Enabled ) );
+        return ValueTask.FromResult( _file.Reconfigure( monitor, maxCountPerFile: cF.MaxCountPerFile, timedFolderMode: cF.TimedFolderMode.Enabled ) );
     }
 
     /// <summary>
