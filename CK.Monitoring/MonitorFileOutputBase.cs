@@ -107,6 +107,21 @@ public class MonitorFileOutputBase : IDisposable
     }
 
     /// <summary>
+    /// Uninitializes this file output.
+    /// The current file is closed, <see cref="Initialize(IActivityMonitor)"/> must be called again.
+    /// <para>
+    /// This enables a file handler to be added/removed with <see cref="DispatcherSink.SubmitAddHandler(IGrandOutputHandler"/>
+    /// and <see cref="DispatcherSink.SubmitRemoveHandler(IGrandOutputHandler)"/> transparently.
+    /// </para>
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    public void Deactivate( IActivityMonitor monitor )
+    {
+        Close();
+        _basePath = null;
+    }
+
+    /// <summary>
     /// Gets the maximum number of entries per file.
     /// </summary>
     public int MaxCountPerFile => _maxCountPerFile;
@@ -129,7 +144,7 @@ public class MonitorFileOutputBase : IDisposable
 
     /// <summary>
     /// Checks whether this <see cref="MonitorFileOutputBase"/> is valid: its base path is successfully created.
-    /// Can be called multiple times.
+    /// Can be called multiple times: will do nothing unless <see cref="Deactivate(IActivityMonitor)"/> is called.
     /// </summary>
     /// <param name="monitor">Required monitor.</param>
     public bool Initialize( IActivityMonitor monitor )
@@ -208,7 +223,9 @@ public class MonitorFileOutputBase : IDisposable
         {
             // Note: The comparer is a reverse comparer. The most RECENT timed folder is the FIRST.
             GetTimedFolders( _rootPath, _basePath, out SortedDictionary<DateTime, string> timedFolders, out string? archivePath );
-            if( timedFolders.Count > c.MaxCurrentLogFolderCount )
+            // We use >= here and we skip MaxCurrentLogFolderCount - 1 because the current _basePath is skipped by the GetTimedFolders
+            // here: we are sure that the existing folders here are candidates to be archived and we let the current folder where it is.
+            if( timedFolders.Count >= c.MaxCurrentLogFolderCount )
             {
                 int retryCount = 5;
                 retry:
@@ -217,13 +234,13 @@ public class MonitorFileOutputBase : IDisposable
                     if( archivePath == null )
                     {
                         monitor.Trace( "Creating Archive folder." );
-                        Directory.CreateDirectory( archivePath = _basePath + "Archive" );
+                        Directory.CreateDirectory( archivePath = _rootPath + "Archive" + Path.DirectorySeparatorChar );
                     }
-                    foreach( var old in timedFolders.Values.Skip( c.MaxCurrentLogFolderCount ) )
+                    foreach( var old in timedFolders.Values.Skip( c.MaxCurrentLogFolderCount - 1 ) )
                     {
                         var fName = Path.GetFileName( old );
                         monitor.Trace( $"Moving '{fName}' folder into Archive folder." );
-                        var target = Path.Combine( archivePath, fName );
+                        var target = archivePath + fName;
                         if( Directory.Exists( target ) )
                         {
                             target += '-' + Guid.NewGuid().ToString();

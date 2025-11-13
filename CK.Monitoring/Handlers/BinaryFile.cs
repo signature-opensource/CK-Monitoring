@@ -88,11 +88,11 @@ public class BinaryFile : IGrandOutputHandler
     /// <summary>
     /// Closes the file if it is opened.
     /// </summary>
-    /// <param name="m">The monitor to use to track activity.</param>
-    public ValueTask DeactivateAsync( IActivityMonitor m )
+    /// <param name="monitor">The monitor to use to track activity.</param>
+    public ValueTask DeactivateAsync( IActivityMonitor monitor )
     {
-        m.Info( "Closing file for BinaryFile handler." );
-        _file.Close();
+        monitor.Info( "Closing file for BinaryFile handler." );
+        _file.Deactivate( monitor );
         return ValueTask.CompletedTask;
     }
 

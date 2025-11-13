@@ -54,7 +54,7 @@ public abstract class FileConfigurationBase : IHandlerConfiguration
 
     /// <summary>
     /// Gets or sets the maximal count of entries per file.
-    /// Defaults to 20000.
+    /// Defaults to 20000. Must be greater than 0.
     /// </summary>
     public int MaxCountPerFile { get; set; } = 20000;
 

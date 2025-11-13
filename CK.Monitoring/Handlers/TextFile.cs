@@ -114,7 +114,7 @@ public sealed class TextFile : IGrandOutputHandler
     public ValueTask DeactivateAsync( IActivityMonitor monitor )
     {
         monitor.Info( "Closing file for TextFile handler." );
-        _file.Close();
+        _file.Deactivate( monitor );
         return ValueTask.CompletedTask;
     }
 
