@@ -1,9 +1,10 @@
+using CK.Core;
+using CommunityToolkit.HighPerformance;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using CK.Core;
 using System.IO.Compression;
-using System.Diagnostics;
+using System.Linq;
 
 namespace CK.Monitoring;
 
@@ -200,51 +201,41 @@ public class MonitorFileOutputBase : IDisposable
             throw new ArgumentException( $"Either {nameof( timeSpanToKeep )} or {nameof( totalBytesToKeep )} must be positive." );
         }
 
+        // We (exceptionnaly) use FileInfo here because we use the cached FileLength in the second pass.
         var candidates = new List<KeyValuePair<DateTime, FileInfo>>();
 
         int preservedByDateCount = 0;
         long byteLengthOfPreservedByDate = 0;
         long totalByteLength = 0;
         DateTime minDate = DateTime.UtcNow - timeSpanToKeep;
-        DirectoryInfo logDirectory = new DirectoryInfo( _basePath );
-        foreach( FileInfo file in logDirectory.EnumerateFiles() )
-        {
-            // Temporary files are "T-" + <date> + _fileNameSuffix + ".tmp" (See OpenNewFile())
-            if( file.Name.EndsWith( ".tmp" ) && file.Name.StartsWith( "T-" ) )
-            {
-                if( _output != null && _output.Name == file.FullName )
-                {
-                    // Skip currently-opened temporary file
-                    continue;
-                }
-                var datePart = file.Name.AsSpan( 2 );
-                if( FileUtil.TryMatchFileNameUniqueTimeUtcFormat( ref datePart, out DateTime d ) )
-                {
-                    if( d >= minDate )
-                    {
-                        ++preservedByDateCount;
-                        byteLengthOfPreservedByDate += file.Length;
-                    }
-                    totalByteLength += file.Length;
-                    candidates.Add( new KeyValuePair<DateTime, FileInfo>( d, file ) );
-                }
-            }
-            // Final files are <date> + _fileNameSuffix (see CloseCurrentFile())
-            else if( file.Name.EndsWith( _fileNameSuffix ) )
-            {
-                var datePart = file.Name.AsSpan();
-                if( FileUtil.TryMatchFileNameUniqueTimeUtcFormat( ref datePart, out DateTime d ) )
-                {
-                    if( d >= minDate )
-                    {
-                        ++preservedByDateCount;
-                        byteLengthOfPreservedByDate += file.Length;
-                    }
-                    totalByteLength += file.Length;
-                    candidates.Add( new KeyValuePair<DateTime, FileInfo>( d, file ) );
-                }
-            }
-        }
+        //
+        // Discovers log files in the _basePath and also in any timed folders that may appear in _basePath:
+        // this handles any TimedFolder transparently without too much overhead:
+        // - In TimedFolder mode, there is no file at the root.
+        // - In regular mode, there is no directory at the root.
+        //
+        // Processing both fully secures the housekeeping when switching from with or without TimedFolder mode.
+        //
+        var baseDirectory = new DirectoryInfo( _basePath );
+        GetCandidateFilesToDelete( candidates,
+                                   ref preservedByDateCount,
+                                   ref byteLengthOfPreservedByDate,
+                                   ref totalByteLength,
+                                   minDate,
+                                   baseDirectory );
+        //
+        // TimedFolder discovering. To remove eventually empty directories, we avoid a second pass here
+        // by handling empty directories now: the empty folders are removed by the second call to RunFileHousekeeping.
+        // This is not a big deal to have a few empty folders for some time.
+        // This method recurses on "Archive" folder name for simplicity.
+        //
+        HandleTimedFolders( monitor,
+                            candidates,
+                            ref preservedByDateCount,
+                            ref byteLengthOfPreservedByDate,
+                            ref totalByteLength,
+                            minDate,
+                            baseDirectory );
         int canBeDeletedCount = candidates.Count - preservedByDateCount;
         bool hasBytesOverflow = totalByteLength > totalBytesToKeep;
         if( canBeDeletedCount > 0 && hasBytesOverflow )
@@ -261,18 +252,116 @@ public class MonitorFileOutputBase : IDisposable
                 totalFileSize += file.Length;
                 if( totalFileSize > totalBytesToKeep )
                 {
-                    monitor.Trace( $"Deleting file {file.FullName} (housekeeping)." );
+                    monitor.Trace( $"Deleting file '{file.FullName}' (housekeeping)." );
                     try
                     {
                         file.Delete();
                     }
                     catch( Exception ex )
                     {
-                        monitor.Warn( $"Failed to delete file {file.FullName} (housekeeping).", ex );
+                        monitor.Warn( $"Failed to delete file '{file.FullName}' (housekeeping).", ex );
                     }
                 }
             }
         }
+    }
+
+    void HandleTimedFolders( IActivityMonitor monitor,
+                             List<KeyValuePair<DateTime, FileInfo>> candidates,
+                             ref int preservedByDateCount,
+                             ref long byteLengthOfPreservedByDate,
+                             ref long totalByteLength,
+                             DateTime minDate,
+                             DirectoryInfo baseDirectory )
+    {
+        foreach( var timedDirectory in baseDirectory.EnumerateDirectories() )
+        {
+            var lastName = Path.GetFileName( timedDirectory.FullName.AsSpan() );
+            if( lastName.Equals( "Archive", StringComparison.OrdinalIgnoreCase ) )
+            {
+                HandleTimedFolders( monitor,
+                                    candidates,
+                                    ref preservedByDateCount,
+                                    ref byteLengthOfPreservedByDate,
+                                    ref totalByteLength,
+                                    minDate,
+                                    timedDirectory );
+            }
+            else if( FileUtil.TryMatchFileNameUniqueTimeUtcFormat( ref lastName, out _ ) )
+            {
+                int fileCount = GetCandidateFilesToDelete( candidates,
+                                                           ref preservedByDateCount,
+                                                           ref byteLengthOfPreservedByDate,
+                                                           ref totalByteLength,
+                                                           minDate,
+                                                           timedDirectory );
+                // We don't try to delete a TimedFolder that contains a file (any file) or any unexpected directory.
+                if( fileCount == 0 && !timedDirectory.EnumerateDirectories().Any() )
+                {
+                    try
+                    {
+                        timedDirectory.Delete( recursive: false );
+                    }
+                    catch( Exception ex )
+                    {
+                        monitor.Warn( $"Failed to delete empty Timed folder '{timedDirectory.FullName}' (housekeeping).", ex );
+                    }
+                }
+            }
+        }
+    }
+
+    int GetCandidateFilesToDelete( List<KeyValuePair<DateTime, FileInfo>> candidates,
+                                   ref int preservedByDateCount,
+                                   ref long byteLengthOfPreservedByDate,
+                                   ref long totalByteLength,
+                                   DateTime minDate,
+                                   DirectoryInfo logDirectory )
+    {
+        // Counts the total number of files in the directory. This is used for empty TimedFolder removal.
+        // We consider that any remaining file in the folder prevents the removal. If the user puts extra file
+        // in a TimedFolder, we don't try to delete it (like a readme.md for instance, even if it is weird).
+        int fileCount = 0;
+        foreach( FileInfo file in logDirectory.EnumerateFiles() )
+        {
+            ++fileCount;
+            var fName = Path.GetFileName( file.FullName.AsSpan() );
+            // Temporary files are "T-" + <date> + _fileNameSuffix + ".tmp" (See OpenNewFile())
+            if( fName.EndsWith( ".tmp" ) && fName.StartsWith( "T-" ) )
+            {
+                if( _output != null && _output.Name == file.FullName )
+                {
+                    // Skip currently-opened temporary file
+                    continue;
+                }
+                var datePart = fName.Slice( 2 );
+                if( FileUtil.TryMatchFileNameUniqueTimeUtcFormat( ref datePart, out DateTime d ) )
+                {
+                    if( d >= minDate )
+                    {
+                        ++preservedByDateCount;
+                        byteLengthOfPreservedByDate += file.Length;
+                    }
+                    totalByteLength += file.Length;
+                    candidates.Add( new KeyValuePair<DateTime, FileInfo>( d, file ) );
+                }
+            }
+            // Final files are <date> + _fileNameSuffix (see CloseCurrentFile())
+            else if( fName.EndsWith( _fileNameSuffix ) )
+            {
+                if( FileUtil.TryMatchFileNameUniqueTimeUtcFormat( ref fName, out DateTime d ) )
+                {
+                    if( d >= minDate )
+                    {
+                        ++preservedByDateCount;
+                        byteLengthOfPreservedByDate += file.Length;
+                    }
+                    totalByteLength += file.Length;
+                    candidates.Add( new KeyValuePair<DateTime, FileInfo>( d, file ) );
+                }
+            }
+        }
+        return fileCount;
     }
 
     /// <summary>
@@ -282,7 +371,12 @@ public class MonitorFileOutputBase : IDisposable
     protected virtual Stream OpenNewFile()
     {
         _openedTimeUtc = DateTime.UtcNow;
-        _output = FileUtil.CreateAndOpenUniqueTimedFile( _basePath + "T-", _fileNameSuffix + ".tmp", _openedTimeUtc, FileAccess.Write, FileShare.Read, _fileBufferSize, FileOptions.SequentialScan );
+        _output = FileUtil.CreateAndOpenUniqueTimedFile( _basePath + "T-", _fileNameSuffix + ".tmp",
+                                                         _openedTimeUtc,
+                                                         FileAccess.Write,
+                                                         FileShare.Read,
+                                                         _fileBufferSize,
+                                                         FileOptions.SequentialScan );
         _countRemainder = _maxCountPerFile;
         return _output;
     }
