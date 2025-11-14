@@ -1,4 +1,6 @@
 using CK.Core;
+using CK.Monitoring.Handlers;
+using System;
 using System.Diagnostics;
 using System.IO;
 
@@ -22,8 +24,19 @@ public class MonitorTextFileOutput : MonitorFileOutputBase
     /// <param name="configuredPath">The path: it can be absolute and when relative, it will be under <see cref="LogFile.RootLogPath"/> (that must be set).</param>
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
-    public MonitorTextFileOutput( string configuredPath, int maxCountPerFile, bool useGzipCompression )
-        : base( configuredPath, ".log" + (useGzipCompression ? ".gzip" : string.Empty), maxCountPerFile, useGzipCompression )
+    /// <param name="timedFolderMode">True to create a TimedFolder for the log files.</param>
+    public MonitorTextFileOutput( string configuredPath,
+                                  int maxCountPerFile,
+                                  bool useGzipCompression,
+                                  bool timedFolderMode,
+                                  bool withLastRunSymLink )
+        : base( configuredPath,
+                ".log" + (useGzipCompression ? ".gzip" : string.Empty),
+                maxCountPerFile,
+                useGzipCompression,
+                timedFolderMode,
+                withLastRunSymLink,
+                "LastRun.log" + (useGzipCompression ? ".gzip" : string.Empty) )
     {
         _builder = new MulticastLogEntryTextBuilder( false, false );
     }
@@ -67,16 +80,14 @@ public class MonitorTextFileOutput : MonitorFileOutputBase
         return s;
     }
 
-    /// <summary>
-    /// Called when the current file is closed.
-    /// </summary>
-    protected override void CloseCurrentFile()
+    /// <inheritdoc />
+    protected override string? DoCloseCurrentFile( bool forgetCurrentFile = false )
     {
         Debug.Assert( _writer != null, "Checked by CloseFile." );
-        _writer.Flush();
+        if( !forgetCurrentFile ) _writer.Flush();
         _writer.Dispose();
         _writer = null;
         _canFlush = false;
-        base.CloseCurrentFile();
+        return base.DoCloseCurrentFile( forgetCurrentFile );
     }
 }

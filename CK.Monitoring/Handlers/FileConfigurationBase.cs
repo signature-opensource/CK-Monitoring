@@ -8,12 +8,13 @@ namespace CK.Monitoring.Handlers;
 /// </summary>
 public abstract class FileConfigurationBase : IHandlerConfiguration
 {
+    readonly TimedFolderConfiguration _timedFolderMode = new TimedFolderConfiguration();
 
     /// <summary>
     /// Gets or sets the rate of file housekeeping tasks execution (automatic log file deletion).
     /// This is a multiple of <see cref="GrandOutputConfiguration.TimerDuration"/>,
     /// and defaults to 1800 (which is 15 minutes with the default <see cref="GrandOutputConfiguration.TimerDuration"/> of 500ms).
-    /// Setting this to zero disables housekeeping entirely.
+    /// Setting this to zero disables housekeeping entirely (and this is not a good idea).
     /// </summary>
     public int HousekeepingRate { get; set; } = 1800;
 
@@ -53,9 +54,14 @@ public abstract class FileConfigurationBase : IHandlerConfiguration
 
     /// <summary>
     /// Gets or sets the maximal count of entries per file.
-    /// Defaults to 20000.
+    /// Defaults to 20000. Must be greater than 0.
     /// </summary>
     public int MaxCountPerFile { get; set; } = 20000;
+
+    /// <summary>
+    /// Gets the <see cref="TimedFolderConfiguration"/>.
+    /// </summary>
+    public TimedFolderConfiguration TimedFolderMode => _timedFolderMode;
 
     /// <summary>
     /// Clones this configuration.

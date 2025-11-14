@@ -21,15 +21,15 @@ public class MonitorBinaryFileOutput : MonitorFileOutputBase
     /// <param name="configuredPath">The path: it can be absolute and when relative, it will be under <see cref="LogFile.RootLogPath"/> (that must be set).</param>
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
-    public MonitorBinaryFileOutput( string configuredPath, int maxCountPerFile, bool useGzipCompression )
-        : base( configuredPath, ".ckmon", maxCountPerFile, useGzipCompression )
+    /// <param name="timedFolderMode">True to create a TimedFolder for the log files.</param>
+    public MonitorBinaryFileOutput( string configuredPath, int maxCountPerFile, bool useGzipCompression, bool timedFolderMode )
+        : base( configuredPath, ".ckmon", maxCountPerFile, useGzipCompression, timedFolderMode, false, null )
     {
     }
 
     /// <summary>
     /// Initializes a new file for <see cref="IBaseLogEntry"/> issued from a specific monitor: the final file name is 
-    /// based on <see cref="FileUtil.FileNameUniqueTimeUtcFormat"/> with a "-{XXX...XXX}.ckmon" suffix where {XXX...XXX} is the unique identifier (Guid with the B format - 32 digits separated by 
-    /// hyphens, enclosed in braces) of the monitor.
+    /// based on <see cref="FileUtil.FileNameUniqueTimeUtcFormat"/> with a "-monitorId.ckmon" suffix.
     /// You must call <see cref="MonitorFileOutputBase.Initialize">Initialize</see> before actually using this object.
     /// </summary>
     /// <param name="configuredPath">The path. Can be absolute. When relative, it will be under <see cref="LogFile.RootLogPath"/> that must be set.</param>
@@ -37,7 +37,7 @@ public class MonitorBinaryFileOutput : MonitorFileOutputBase
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
     public MonitorBinaryFileOutput( string configuredPath, string monitorId, int maxCountPerFile, bool useGzipCompression )
-        : base( configuredPath, '-' + monitorId + ".ckmon", maxCountPerFile, useGzipCompression )
+        : base( configuredPath, '-' + monitorId + ".ckmon", maxCountPerFile, useGzipCompression, false, false, null )
     {
     }
 
@@ -110,15 +110,16 @@ public class MonitorBinaryFileOutput : MonitorFileOutputBase
         return s;
     }
 
-    /// <summary>
-    /// Called when the current file is closed.
-    /// </summary>
-    protected override void CloseCurrentFile()
+    /// <inheritdoc />
+    protected override string? DoCloseCurrentFile( bool forgetCurrentFile = false )
     {
-        Debug.Assert( _writer != null, "Checked by CloseFile." );
-        _writer.Write( (byte)0 );
-        base.CloseCurrentFile();
+        Throw.CheckState( _writer != null );
+        // Rather useless but cleaner: don't write if we know that the file will
+        // be forgotten.
+        if( !forgetCurrentFile ) _writer.Write( (byte)0 );
+        var closedFilePath = base.DoCloseCurrentFile( forgetCurrentFile );
         _writer.Dispose();
         _writer = null;
+        return closedFilePath;
     }
 }

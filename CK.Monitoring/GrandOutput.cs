@@ -97,7 +97,7 @@ public sealed partial class GrandOutput : IAsyncDisposable
     static GrandOutputConfiguration CreateInternalDefaultConfiguration()
     {
         GrandOutputConfiguration? configuration = new GrandOutputConfiguration()
-                            .AddHandler( new Handlers.TextFileConfiguration() { Path = "Text" } );
+                            .AddHandler( new Handlers.TextFileConfiguration() { Path = "Text", TimedFolderMode = { MaxCurrentLogFolderCount = 5 } } );
         configuration.InternalClone = true;
         return configuration;
     }

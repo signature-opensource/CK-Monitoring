@@ -13,7 +13,7 @@ namespace CK.Monitoring;
 /// Log event sink: <see cref="Handle(InputLogEntry)"/> dispatches the log
 /// event to the <see cref="IGrandOutputHandler"/>.
 /// </summary>
-public sealed class DispatcherSink
+public sealed partial class DispatcherSink
 {
     // Null is the Timer (awaker).
     // InputLogEntry is the most common.
@@ -36,6 +36,7 @@ public sealed class DispatcherSink
     readonly object _externalLogLock;
     readonly string _sinkMonitorId;
 
+    HandlerList? _handlerList;
     GrandOutputConfiguration[] _newConf;
     TimeSpan _timerDuration;
     long _deltaTicks;
@@ -126,7 +127,7 @@ public sealed class DispatcherSink
         _nextTicks = now + _timerDuration.Ticks;
         _nextExternalTicks = now + _timerDuration.Ticks;
         // Creates and launch the "awaker". This avoids any CancellationToken.
-        Timer awaker = new Timer( _ => _queue.Writer.TryWrite( null ), null, 100, 100 );
+        Timer awaker = new Timer( _ => _queue.Writer.TryWrite( null ), null, 100u, 100u );
         while( await _queue.Reader.WaitToReadAsync() )
         {
             _queue.Reader.TryRead( out var o );
@@ -182,19 +183,9 @@ public sealed class DispatcherSink
             }
             else if( o != null )
             {
-                if( o is IGrandOutputHandler toAdd )
+                if( o is IGrandOutputHandlersActionBase action )
                 {
-                    if( await SafeActivateOrDeactivateAsync( monitor, toAdd, true ) )
-                    {
-                        _handlers.Add( toAdd );
-                    }
-                }
-                else if( o is Handlers.IDynamicGrandOutputHandler dH )
-                {
-                    if( await SafeActivateOrDeactivateAsync( monitor, dH.Handler, false ) )
-                    {
-                        _handlers.Remove( dH.Handler );
-                    }
+                    await action.DoRunAsync( monitor, _handlerList ??= new HandlerList( this ) );
                 }
                 else if( o is TaskCompletionSource asyncWait )
                 {
@@ -207,7 +198,7 @@ public sealed class DispatcherSink
                 }
             }
             #endregion
-            #region if not closing: process OnTimer (on every item) and handle dynamic handlers.
+            #region if not closing: process OnTimer (on every item).
             if( !_stopTokenSource.IsCancellationRequested )
             {
                 now = Stopwatch.GetTimestamp();
@@ -256,6 +247,10 @@ public sealed class DispatcherSink
             if( more is InputLogEntry e )
             {
                 e.Release();
+            }
+            else if( more is IGrandOutputHandlersActionBase action )
+            {
+                action.Cancel();
             }
             else if( more is TaskCompletionSource asyncWait )
             {
@@ -368,8 +363,11 @@ public sealed class DispatcherSink
     {
         try
         {
-            if( activate ) return await h.ActivateAsync( monitor );
-            else await h.DeactivateAsync( monitor );
+            if( activate )
+            {
+                return await h.ActivateAsync( monitor );
+            }
+            await h.DeactivateAsync( monitor );
             return true;
         }
         catch( Exception ex )
@@ -441,7 +439,6 @@ public sealed class DispatcherSink
     /// <summary>
     /// Waits for the current waiting queue of entries to be dispatched.
     /// </summary>
-    /// <returns>The awaitable.</returns>
     public void SyncWait()
     {
         var c = new SyncWaitSignal();
@@ -453,6 +450,17 @@ public sealed class DispatcherSink
         {
             Monitor.Wait( c );
         }
+    }
+
+    /// <summary>
+    /// Submits a <see cref="GrandOutputHandlersAction"/> or <see cref="GrandOutputHandlersAction{TResult}"/>.
+    /// </summary>
+    /// <param name="action">The action to execute.</param>
+    public void Submit( IGrandOutputHandlersActionBase action )
+    {
+        Throw.CheckNotNullArgument( action );
+        Throw.CheckArgument( "A GrandOutputHandlersAction can be used only once.", !action.Completion.IsCompleted );
+        _queue.Writer.TryWrite( action );
     }
 
     internal void ApplyConfiguration( GrandOutputConfiguration configuration, bool waitForApplication )
@@ -546,15 +554,4 @@ public sealed class DispatcherSink
             ExternalLog( LogLevel.Fatal, GrandOutput.UnhandledException, $"AppDomain.CurrentDomain.UnhandledException raised with Exception object '{exText}'." );
         }
     }
-
-    internal void AddDynamicHandler( IGrandOutputHandler handler )
-    {
-        _queue.Writer.TryWrite( handler );
-    }
-
-    internal void RemoveDynamicHandler( Handlers.IDynamicGrandOutputHandler handler )
-    {
-        _queue.Writer.TryWrite( handler );
-    }
-
 }

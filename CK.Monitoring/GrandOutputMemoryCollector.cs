@@ -18,7 +18,7 @@ namespace CK.Monitoring;
 /// use this elsewhere.
 /// </para>
 /// </summary>
-public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHandler, IDisposable
+public sealed class GrandOutputMemoryCollector : IDisposable
 {
     readonly DispatcherSink _sink;
     readonly Handler _handler;
@@ -44,7 +44,7 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
             _cachedListText = new List<string>();
             _cachedText = _cachedListText;
         }
-        _sink.AddDynamicHandler( _handler );
+        _sink.SubmitAddHandler( _handler );
     }
 
     /// <summary>
@@ -229,8 +229,6 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
     /// </summary>
     public bool IsDisposed => _disposed != 0;
 
-    IGrandOutputHandler Handlers.IDynamicGrandOutputHandler.Handler => _handler;
-
     /// <summary>
     /// Dispose this handler.
     /// No more entries will be collected but the recevied entries, the <see cref="CachedEntries"/>
@@ -240,7 +238,7 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
     {
         if( Interlocked.Exchange( ref _disposed, 1 ) == 0 )
         {
-            _sink.RemoveDynamicHandler( this );
+            _sink.SubmitRemoveHandler( _handler );
         }
     }
 
@@ -257,7 +255,7 @@ public sealed class GrandOutputMemoryCollector : Handlers.IDynamicGrandOutputHan
 
         public ValueTask<bool> ActivateAsync( IActivityMonitor monitor ) => ValueTask.FromResult( true );
 
-        public ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor monitor, IHandlerConfiguration c ) => ValueTask.FromResult( true );
+        public ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor monitor, IHandlerConfiguration c ) => ValueTask.FromResult( false );
 
         public ValueTask DeactivateAsync( IActivityMonitor monitor )
         {

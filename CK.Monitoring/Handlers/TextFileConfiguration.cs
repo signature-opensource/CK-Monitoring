@@ -18,7 +18,21 @@ public class TextFileConfiguration : FileConfigurationBase
     /// True to write the "Metrics" logs.
     /// Default to false.
     /// </summary>
-    public bool HandleMetrics { get; internal set; }
+    public bool HandleMetrics { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the "LastRun.log" link file should be handled.
+    /// When let to null, defaults to <see cref="TimedFolderConfiguration.Enabled"/>.
+    /// <para>
+    /// Unfortunately, creating symbolic links on Windows is a security restricted capability.
+    /// One way is to enable the developper mode in Windows 10/11.
+    /// The user can also be granted the
+    /// <see href="https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/create-symbolic-links">
+    /// SeCreateSymbolicLinkPrivilege
+    /// </see>.
+    /// </para>
+    /// </summary>
+    public bool? WithLastRunLink { get; set; }
 
     /// <summary>
     /// Clones this configuration.
@@ -31,9 +45,16 @@ public class TextFileConfiguration : FileConfigurationBase
             Path = Path,
             MaxCountPerFile = MaxCountPerFile,
             AutoFlushRate = AutoFlushRate,
+            HandleMetrics = HandleMetrics,
+            WithLastRunLink = WithLastRunLink,
             HousekeepingRate = HousekeepingRate,
             MinimumTimeSpanToKeep = MinimumTimeSpanToKeep,
             MaximumTotalKbToKeep = MaximumTotalKbToKeep,
+            TimedFolderMode =
+            {
+                MaxCurrentLogFolderCount = TimedFolderMode.MaxCurrentLogFolderCount,
+                MaxArchivedLogFolderCount = TimedFolderMode.MaxArchivedLogFolderCount
+            }
         };
     }
 }
