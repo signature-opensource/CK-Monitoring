@@ -23,7 +23,7 @@ public class MonitorBinaryFileOutput : MonitorFileOutputBase
     /// <param name="useGzipCompression">True to gzip the file.</param>
     /// <param name="timedFolderMode">True to create a TimedFolder for the log files.</param>
     public MonitorBinaryFileOutput( string configuredPath, int maxCountPerFile, bool useGzipCompression, bool timedFolderMode )
-        : base( configuredPath, ".ckmon", maxCountPerFile, useGzipCompression, timedFolderMode )
+        : base( configuredPath, ".ckmon", maxCountPerFile, useGzipCompression, timedFolderMode, false, null )
     {
     }
 
@@ -37,7 +37,7 @@ public class MonitorBinaryFileOutput : MonitorFileOutputBase
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
     public MonitorBinaryFileOutput( string configuredPath, string monitorId, int maxCountPerFile, bool useGzipCompression )
-        : base( configuredPath, '-' + monitorId + ".ckmon", maxCountPerFile, useGzipCompression, false )
+        : base( configuredPath, '-' + monitorId + ".ckmon", maxCountPerFile, useGzipCompression, false, false, null )
     {
     }
 

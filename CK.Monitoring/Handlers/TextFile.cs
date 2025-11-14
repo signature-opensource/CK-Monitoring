@@ -25,7 +25,11 @@ public sealed class TextFile : IGrandOutputHandler
         Throw.CheckNotNullArgument( config );
         _config = config;
         var rootPath = config.Path;
-        _file = new MonitorTextFileOutput( config.Path, config.MaxCountPerFile, false, config.TimedFolderMode.Enabled );
+        _file = new MonitorTextFileOutput( config.Path,
+                                           config.MaxCountPerFile,
+                                           useGzipCompression: false,
+                                           config.TimedFolderMode.Enabled,
+                                           config.WithLastRunLink ?? config.TimedFolderMode.Enabled );
         _countFlush = config.AutoFlushRate;
         _countHousekeeping = config.HousekeepingRate;
         _shouldHandleMetrics = config.HandleMetrics;

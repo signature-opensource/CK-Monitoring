@@ -25,8 +25,18 @@ public class MonitorTextFileOutput : MonitorFileOutputBase
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
     /// <param name="timedFolderMode">True to create a TimedFolder for the log files.</param>
-    public MonitorTextFileOutput( string configuredPath, int maxCountPerFile, bool useGzipCompression, bool timedFolderMode )
-        : base( configuredPath, ".log" + (useGzipCompression ? ".gzip" : string.Empty), maxCountPerFile, useGzipCompression, timedFolderMode )
+    public MonitorTextFileOutput( string configuredPath,
+                                  int maxCountPerFile,
+                                  bool useGzipCompression,
+                                  bool timedFolderMode,
+                                  bool withLastRunSymLink )
+        : base( configuredPath,
+                ".log" + (useGzipCompression ? ".gzip" : string.Empty),
+                maxCountPerFile,
+                useGzipCompression,
+                timedFolderMode,
+                withLastRunSymLink,
+                "LastRun.log" + (useGzipCompression ? ".gzip" : string.Empty) )
     {
         _builder = new MulticastLogEntryTextBuilder( false, false );
     }

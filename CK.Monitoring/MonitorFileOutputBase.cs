@@ -22,18 +22,24 @@ public class MonitorFileOutputBase : IDisposable
     const int _fileBufferSize = 4096;
 
     readonly string _configPath;
+    readonly string? _lastRunFileName;
+    string? _lastRunFilePath;
+
     string _fileNameSuffix;
     int _maxCountPerFile;
     bool _useGzipCompression;
     bool _timedFolderMode;
+    bool _withLastRunSymLink;
 
-    // The result of the _configPath.
     string? _rootPath;
-    // Either _rootPath or the _rootPath/TimedFolder.
     string? _basePath;
     FileStream? _output;
     DateTime _openedTimeUtc;
     int _countRemainder;
+
+    // Memorizes the first attempt to create a Symbolic Link to the last closed log file.
+    // Once true, no subsequent attempts are done.
+    static bool _symLinkPrivilegeError;
 
     /// <summary>
     /// Initializes a new file for <see cref="IFullLogEntry"/>: the final file name is based on <see cref="FileUtil.FileNameUniqueTimeUtcFormat"/> with a ".ckmon" extension.
@@ -44,20 +50,27 @@ public class MonitorFileOutputBase : IDisposable
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
     /// <param name="timedFolderMode">Whether a timed folder must be created under the <paramref name="configuredPath"/>.</param>
+    /// <param name="withLastRunSymLink">True to handle the symbolic link "LastRun.log". <paramref name="lastRunFileName"/> must be specified.</param>
+    /// <param name="lastRunFileName">Optional file name of the symbolic link "LastRun.log". When null, <see cref="WithLastRunSymLink"/> cannot be true.</param>
     protected MonitorFileOutputBase( string configuredPath,
                                      string fileNameSuffix,
                                      int maxCountPerFile,
                                      bool useGzipCompression,
-                                     bool timedFolderMode )
+                                     bool timedFolderMode,
+                                     bool withLastRunSymLink,
+                                     string? lastRunFileName )
     {
         Throw.CheckNotNullArgument( configuredPath );
         Throw.CheckNotNullOrEmptyArgument( fileNameSuffix );
         Throw.CheckOutOfRangeArgument( maxCountPerFile > 0 );
+        Throw.CheckOutOfRangeArgument( !withLastRunSymLink || !string.IsNullOrWhiteSpace( lastRunFileName ) );
         _configPath = configuredPath;
         _maxCountPerFile = maxCountPerFile;
         _fileNameSuffix = fileNameSuffix;
         _useGzipCompression = useGzipCompression;
         _timedFolderMode = timedFolderMode;
+        _withLastRunSymLink = withLastRunSymLink;
+        _lastRunFileName = lastRunFileName;
     }
 
     /// <summary>
@@ -68,13 +81,34 @@ public class MonitorFileOutputBase : IDisposable
     /// <param name="maxCountPerFile">The new maximal number of entries per file if not null.</param>
     /// <param name="useGzipCompression">The new GZip compression if not null.</param>
     /// <param name="timedFolderMode">The new TimedFolder mode if not null.</param>
+    /// <param name="withLastRunSymLink">The new WithLastRunSymLink mode if not null.</param>
     /// <returns>True on success, false otherwise.</returns>
     public bool Reconfigure( IActivityMonitor monitor,
                              string? fileNameSuffix = null,
                              int? maxCountPerFile = null,
                              bool? useGzipCompression = null,
-                             bool? timedFolderMode = null )
+                             bool? timedFolderMode = null,
+                             bool? withLastRunSymLink = null )
     {
+        if( withLastRunSymLink.HasValue && withLastRunSymLink.Value != _withLastRunSymLink )
+        {
+            if( _lastRunFilePath == null )
+            {
+                Throw.InvalidOperationException( "Cannot set WithLastRunSymLink since this MonitorFileOutputBase cannot handle it." );
+            }
+            _withLastRunSymLink = withLastRunSymLink.Value;
+            if( !_withLastRunSymLink )
+            {
+                try
+                {
+                    File.Delete( _lastRunFilePath );
+                }
+                catch( Exception ex )
+                {
+                    monitor.Warn( $"While deleting '{_lastRunFilePath}' symbolic link.", ex );
+                }
+            }
+        }
         if( fileNameSuffix != null && _fileNameSuffix != fileNameSuffix )
         {
             Close();
@@ -143,6 +177,33 @@ public class MonitorFileOutputBase : IDisposable
     public bool IsInitialized => _basePath != null;
 
     /// <summary>
+    /// Gets whether this file is currently opened.
+    /// </summary>
+    public bool IsOpened => _output != null;
+
+    /// <summary>
+    /// Gets whether the "LastRun.log" symbolic link is handled.
+    /// </summary>
+    public bool WithLastRunSymLink => _withLastRunSymLink;
+
+    /// <summary>
+    /// Gets the root path that is the result of the <see cref="LogFile.RootLogPath"/> and <see cref="FileConfigurationBase.Path"/>.
+    /// This is not null after the first successful call to <see cref="Initialize(IActivityMonitor)"/> and remains unchanged
+    /// across multiple calls to <see cref="Deactivate(IActivityMonitor)"/> and Initialize.
+    /// </summary>
+    public string? RootPath => _rootPath;
+
+    /// <summary>
+    /// Gets the base path of the log files. In regular mode, it is the same as the <see cref="RootPath"/> but in
+    /// <see cref="TimedFolderMode"/>, this is the Timed folder in RootPath.
+    /// <para>
+    /// This is not null after the first successful call to <see cref="Initialize(IActivityMonitor)"/>. This can be changed
+    /// by calls to <see cref="Reconfigure"/> when time folder mode changes.
+    /// </para>
+    /// </summary>
+    public string? BasePath => _basePath;
+
+    /// <summary>
     /// Checks whether this <see cref="MonitorFileOutputBase"/> is valid: its base path is successfully created.
     /// Can be called multiple times: will do nothing unless <see cref="Deactivate(IActivityMonitor)"/> is called.
     /// </summary>
@@ -161,6 +222,10 @@ public class MonitorFileOutputBase : IDisposable
         {
             _rootPath = ComputeRootPath( monitor, _configPath );
             if( _rootPath == null ) return false;
+            if( _lastRunFileName != null )
+            {
+                _lastRunFilePath = _rootPath + _lastRunFileName;
+            }
         }
         if( _timedFolderMode )
         {
@@ -323,11 +388,6 @@ public class MonitorFileOutputBase : IDisposable
             }
         }
     }
-
-    /// <summary>
-    /// Gets whether this file is currently opened.
-    /// </summary>
-    public bool IsOpened => _output != null;
 
     /// <summary>
     /// Closes (and optionally forgets) the currently opened file (if it has at least one entry) and renames it.
@@ -579,7 +639,7 @@ public class MonitorFileOutputBase : IDisposable
     /// <inheritdoc cref="Close(bool)"/>
     protected virtual string? DoCloseCurrentFile( bool forgetCurrentFile = false )
     {
-        Throw.CheckState( _output != null && _basePath != null );
+        Throw.CheckState( _output != null );
         string fName = _output.Name;
         _output.Dispose();
         _output = null;
@@ -597,6 +657,35 @@ public class MonitorFileOutputBase : IDisposable
             }
             return null;
         }
+        var closed = DoClose( fName );
+        if( _withLastRunSymLink && !_symLinkPrivilegeError )
+        {
+            Throw.DebugAssert( _lastRunFilePath != null );
+            try
+            {
+                if( File.Exists( _lastRunFilePath ) ) File.Delete( _lastRunFilePath );
+                File.CreateSymbolicLink( _lastRunFilePath, closed );
+            }
+            catch( Exception ex )
+            {
+                // A required privilege is not held by the client (0x80070522).
+                if( ex.HResult == -2147023582 )
+                {
+                    _symLinkPrivilegeError = true;
+                    ActivityMonitor.StaticLogger.Warn( $"Not enough privilege to create symbolic link. Disabling LastRunSymLink feature." );
+                }
+                else
+                {
+                    ActivityMonitor.StaticLogger.Warn( $"While updating symbolic link '{_lastRunFilePath}' to '{closed}'.", ex );
+                }
+            }
+        }
+        return closed;
+    }
+
+    string DoClose( string fName )
+    {
+        Throw.DebugAssert( _basePath != null );
         if( _useGzipCompression )
         {
             const int bufferSize = 64 * 1024;
