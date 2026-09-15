@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using CK.Core;
@@ -340,49 +340,86 @@ public class TextFileTests
     {
         string folder = TestHelper.PrepareLogFolder( "AutoDelete_Size" );
 
-        var textConf = new Handlers.TextFileConfiguration() { Path = "AutoDelete_Size" };
-        // Change configuration for tests
-        textConf.HousekeepingRate = 1; // Run every 500ms normally (here TimerDuration is set to 100ms).
-        textConf.MaximumTotalKbToKeep = 1; // Always delete file beyond max size
-        textConf.MinimumTimeSpanToKeep = TimeSpan.Zero; // Make minimum timespan
+        // PHASE 1 - Creates 5 log files with the default housekeeping settings
+        //           (100 MB / 60 days): no file can be deleted here.
+        //
+        // Housekeeping MUST NOT be active during this phase: it runs on the GrandOutput timer
+        // and would silently delete the files while we are creating them.
+        const int createdFileCount = 5;
+        var initialConfig = new GrandOutputConfiguration()
+                                    .AddHandler( new Handlers.TextFileConfiguration() { Path = "AutoDelete_Size" } );
+        for( int i = 0; i < createdFileCount; i++ )
+        {
+            await using GrandOutput g = new GrandOutput( initialConfig );
+            var m = new ActivityMonitor( ActivityMonitorOptions.SkipAutoConfiguration );
+            g.EnsureGrandOutputClient( m );
+            // ~8 KB of payload per file: the per entry overhead (and its variations across
+            // machines, paths and monitor identifiers) is then negligible.
+            for( int line = 0; line < 8; ++line ) m.Info( new string( 'X', 1000 ) );
+        }
+        // File names are based on FileUtil.FileNameUniqueTimeUtcFormat that is ordinal sortable:
+        // ordering by name orders by creation date, the oldest first.
+        var created = Directory.GetFiles( folder ).OrderBy( f => f, StringComparer.Ordinal ).ToArray();
+        created.Length.ShouldBe( createdFileCount, $"One file per GrandOutput: {created.Select( f => Path.GetFileName( f ) ).Concatenate()}" );
+
+        // Housekeeping keeps the most recent files as long as their cumulated size fits in
+        // MaximumTotalKbToKeep (the currently opened file is never a candidate for deletion).
+        // We compute the budget from the actual sizes so that exactly the 2 most recent files
+        // are kept and the 3 older ones are deleted.
+        var sizes = created.Select( f => new FileInfo( f ).Length ).ToArray();
+        long sizeToKeep = sizes[^1] + sizes[^2];
+        int maximumTotalKbToKeep = (int)(sizeToKeep / 1000) + 1;
+        long budget = maximumTotalKbToKeep * 1000L;
+        budget.ShouldBeGreaterThanOrEqualTo( sizeToKeep, "Test setup: the 2 most recent files fit in the budget." );
+        budget.ShouldBeLessThan( sizeToKeep + sizes[^3], "Test setup: the 3rd most recent file doesn't fit in the budget "
+                                                         + "(files are big enough for the Kb rounding to be harmless)." );
+
+        // PHASE 2 - Opens a GrandOutput with an aggressive housekeeping to trigger the deletion.
+        //           Note: this DOES create a new file (that is skipped by the housekeeping since
+        //           it is the currently opened one).
+        var textConf = new Handlers.TextFileConfiguration()
+        {
+            Path = "AutoDelete_Size",
+            HousekeepingRate = 1, // Housekeeping on each timer tick.
+            MaximumTotalKbToKeep = maximumTotalKbToKeep,
+            MinimumTimeSpanToKeep = TimeSpan.Zero // No file is protected by its age.
+        };
         var config = new GrandOutputConfiguration().AddHandler( textConf );
-
-        int lineLengthToLogToGet1000bytes = 500;
-
         // Changes the default 500 ms to trigger OnTimerAsync more often.
         config.TimerDuration = TimeSpan.FromMilliseconds( 100 );
 
-        // Create 3*1 KB log files
-        for( int i = 0; i < 3; i++ )
-        {
-            await using( GrandOutput g = new GrandOutput( config ) )
-            {
-                var m = new ActivityMonitor( ActivityMonitorOptions.SkipAutoConfiguration );
-                g.EnsureGrandOutputClient( m );
-                m.Info( new string( 'X', lineLengthToLogToGet1000bytes ) );
-            }
-        }
-
-        long GetTotalLogSize()
-        {
-            return Directory.EnumerateFiles( folder ).Sum( x => new FileInfo( x ).Length );
-        }
-
-        var totalLogSize = GetTotalLogSize();
-        totalLogSize.ShouldBeGreaterThan( 2500 );
-
-        // Open another GrandOutput to trigger housekeeping.
-        // Note: this DOES create a file!
+        bool deletionDone;
         await using( GrandOutput g = new GrandOutput( config ) )
         {
-            // Wait for next flush (~100 ms)
-            Thread.Sleep( 200 );
+            var m = new ActivityMonitor( ActivityMonitorOptions.SkipAutoConfiguration );
+            g.EnsureGrandOutputClient( m );
+            m.Info( "Triggering the housekeeping." );
+            // Housekeeping is asynchronous (timer based): polls instead of guessing a delay.
+            deletionDone = await WaitForAsync( () => created.Count( File.Exists ) <= 2 );
         }
-#if RELEASE
-        await Task.Delay( 400 );
-#endif
+        deletionDone.ShouldBeTrue( $"The 3 oldest files have been deleted. Remaining: "
+                                   + $"{created.Where( File.Exists ).Select( f => Path.GetFileName( f ) ).Concatenate()}" );
+        created.Where( File.Exists ).ShouldBe( new[] { created[^2], created[^1] }, "The 2 most recent files are the kept ones." );
+
         var files = Directory.GetFiles( folder ).Select( f => Path.GetFileName( f ) );
-        files.Count().ShouldBe( 2, $"Only 2 files should be kept - the last log file, and 1x~1KB file: {files.Concatenate()}" );
+        files.Count().ShouldBe( 3, $"The 2 kept files and the file of the last GrandOutput: {files.Concatenate()}" );
+    }
+
+    /// <summary>
+    /// Waits for a condition to become true, polling it every 20 ms.
+    /// </summary>
+    /// <param name="condition">The condition to wait for.</param>
+    /// <param name="timeoutMilliseconds">Maximal wait time.</param>
+    /// <returns>True if the condition became true, false on timeout.</returns>
+    static async Task<bool> WaitForAsync( Func<bool> condition, int timeoutMilliseconds = 10_000 )
+    {
+        long start = Environment.TickCount64;
+        while( !condition() )
+        {
+            if( Environment.TickCount64 - start > timeoutMilliseconds ) return false;
+            await Task.Delay( 20 );
+        }
+        return true;
     }
 
     static void DumpSampleLogs1( Random r, GrandOutput g )
