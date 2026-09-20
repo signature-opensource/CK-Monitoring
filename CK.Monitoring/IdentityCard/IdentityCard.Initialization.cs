@@ -104,7 +104,7 @@ public sealed partial class IdentityCard
             }
             else
             {
-                monitor.Warn( $"No Windows time zone found for the IANA identifier '{tz.Id}'." );
+                // Don't warn and even trace whenever we miss a Windows id.
             }
         }
         else
@@ -125,7 +125,9 @@ public sealed partial class IdentityCard
             }
             else
             {
-                monitor.Warn( $"No IANA time zone found for the identifier '{tz.Id}'." );
+                // Don't warn and even trace whenever we miss a IANA id. Windows "Romance Standard Time" is ambiguous:
+                // (Europe/Paris, Europe/Brussels, Europe/Copenhagen, Europe/Madrid or Africa/Ceuta) and this is noise
+                // in the logs. Moreover, the TimeZone/Id/Windows is captured above.
             }
         }
     }
