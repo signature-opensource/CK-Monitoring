@@ -144,7 +144,7 @@ public class MonitorFileOutputBase : IDisposable
     /// Uninitializes this file output.
     /// The current file is closed, <see cref="Initialize(IActivityMonitor)"/> must be called again.
     /// <para>
-    /// This enables a file handler to be added/removed with <see cref="DispatcherSink.SubmitAddHandler(IGrandOutputHandler"/>
+    /// This enables a file handler to be added/removed with <see cref="DispatcherSink.SubmitAddHandler(IGrandOutputHandler)"/>
     /// and <see cref="DispatcherSink.SubmitRemoveHandler(IGrandOutputHandler)"/> transparently.
     /// </para>
     /// </summary>

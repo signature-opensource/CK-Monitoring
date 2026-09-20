@@ -25,6 +25,7 @@ public class MonitorTextFileOutput : MonitorFileOutputBase
     /// <param name="maxCountPerFile">Maximum number of entries per file. Must be greater than 1.</param>
     /// <param name="useGzipCompression">True to gzip the file.</param>
     /// <param name="timedFolderMode">True to create a TimedFolder for the log files.</param>
+    /// <param name="withLastRunSymLink">True to handle the "LastRun.log" symbolic link to the current file.</param>
     public MonitorTextFileOutput( string configuredPath,
                                   int maxCountPerFile,
                                   bool useGzipCompression,
