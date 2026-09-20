@@ -1,3 +1,4 @@
+using System;
 using CK.Core;
 using CK.Monitoring.Impl;
 using System.Collections.Generic;
@@ -33,8 +34,44 @@ public sealed partial class InputLogEntry : IFullLogEntry
 
     InputLogEntry()
     {
-        _refCount = 1;
         _tags = ActivityMonitor.Tags.Empty;
+    }
+
+    /// <summary>
+    /// Exact leak detection.
+    /// <para>
+    /// A pooled entry is rooted by its pool (the <c>_items</c> queue or <c>_fastItem</c>) while it is free, and by
+    /// its holder while it is alive. Being finalized can therefore only mean that the last reference to an alive
+    /// entry has been lost without <see cref="Release()"/> being called. There is no false positive: an entry that
+    /// the pool deliberately drops has a 0 reference count and a suppressed finalizer, and an entry that is
+    /// legitimately retained is reachable, hence never finalized.
+    /// </para>
+    /// </summary>
+    ~InputLogEntry()
+    {
+        // An exception escaping a finalizer terminates the process: the leak detector must never be able to
+        // bring down the application it diagnoses.
+        try
+        {
+            if( _refCount != 0 )
+            {
+                var d = _diagnostics;
+                d.OnLeaked( d.NeedLeakSample ? DescribeLeak() : null );
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    // Called from the finalizer thread: the entry is still intact (Release() is what resets it), so the leak
+    // is reported with the identity of the log that leaked instead of a bare count.
+    string DescribeLeak()
+    {
+        var t = _text.AsSpan();
+        // CloseGroup and ExternalLog entries carry no source address.
+        var source = _fileName != null ? $"@{_fileName}:{_lineNumber}" : "<external>";
+        return $"{_logType} {_logLevel & LogLevel.Mask} {_monitorId}.{_logTime} (refCount: {_refCount}) - {source} - {(t.Length < 64 ? t : t[..64])}{(t.Length < 64 ? "" : "...")}";
     }
 
     // For Log, OpenGroup and StaticLogger.
@@ -45,8 +82,9 @@ public sealed partial class InputLogEntry : IFullLogEntry
                      DateTimeStamp previousLogTime )
     {
         Debug.Assert( logType == LogEntryType.OpenGroup || logType == LogEntryType.Line );
-        Debug.Assert( _refCount == 1 && _exception == null && _conclusions == null && _tags == ActivityMonitor.Tags.Empty && _text == null && _monitorId == null,
+        Debug.Assert( _refCount == 0 && _exception == null && _conclusions == null && _tags == ActivityMonitor.Tags.Empty && _text == null && _monitorId == null,
                       "Fields have been reset." );
+        _refCount = 1;
         _groupDepth = data.Depth;
         _grandOutputId = grandOutputId;
         _tags = data.Tags;
@@ -73,8 +111,9 @@ public sealed partial class InputLogEntry : IFullLogEntry
                      LogEntryType previousEntryType,
                      DateTimeStamp previousLogTime )
     {
-        Debug.Assert( _refCount == 1 && _exception == null && _conclusions == null && _tags == ActivityMonitor.Tags.Empty && _text == null && _monitorId == null,
+        Debug.Assert( _refCount == 0 && _exception == null && _conclusions == null && _tags == ActivityMonitor.Tags.Empty && _text == null && _monitorId == null,
                       "Fields have been reset." );
+        _refCount = 1;
         _grandOutputId = grandOutputId;
         _groupDepth = groupDepth;
         _logType = LogEntryType.CloseGroup;
@@ -96,8 +135,9 @@ public sealed partial class InputLogEntry : IFullLogEntry
                      CKTrait tags,
                      CKExceptionData? ex )
     {
-        Debug.Assert( _refCount == 1 && _exception == null && _conclusions == null && _tags == ActivityMonitor.Tags.Empty && _text == null && _monitorId == null,
+        Debug.Assert( _refCount == 0 && _exception == null && _conclusions == null && _tags == ActivityMonitor.Tags.Empty && _text == null && _monitorId == null,
                       "Fields have been reset." );
+        _refCount = 1;
         _grandOutputId = grandOutputId;
         _groupDepth = 0;
         _logType = LogEntryType.Line;
@@ -231,7 +271,6 @@ public sealed partial class InputLogEntry : IFullLogEntry
             _exception = null;
             _text = null;
             _monitorId = null;
-            _refCount = 1;
             // The Initialize() overloads for ExternaLog and CloseGroup do not set _fileName and _lineNumber.
             _fileName = null;
             _lineNumber = 0;
@@ -240,6 +279,9 @@ public sealed partial class InputLogEntry : IFullLogEntry
             Release( this );
             return;
         }
+        // Best effort over release detection: the count is recorded before throwing because this exception
+        // is often swallowed by the logging code path that triggered it.
+        if( refCount < 0 ) _diagnostics.OnOverRelease();
         Throw.CheckState( refCount > 0 );
     }
 }
