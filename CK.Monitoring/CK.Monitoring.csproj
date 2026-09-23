@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Description>Extends CK.ActivityMonitor with outputs and events serialization.
     Main type is GrandOutput that collects centralized logs and dispatch them in configurable handlers.</Description>
   </PropertyGroup>
