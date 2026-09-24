@@ -442,12 +442,15 @@ public sealed partial class DispatcherSink
     public void SyncWait()
     {
         var c = new SyncWaitSignal();
-        if( !_queue.Writer.TryWrite( c ) )
-        {
-            return;
-        }
+        // The lock must be taken BEFORE the signal is queued: the dispatcher pulses it as soon as it reaches it
+        // and a Monitor.Pulse without waiter is lost (the caller would then wait forever). Monitor.Wait releases
+        // the lock atomically, so the dispatcher can only pulse once this thread is waiting.
         lock( c )
         {
+            if( !_queue.Writer.TryWrite( c ) )
+            {
+                return;
+            }
             Monitor.Wait( c );
         }
     }
