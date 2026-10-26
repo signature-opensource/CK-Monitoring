@@ -1,14 +1,15 @@
 # CK.Monitoring.Hosting: monitoring from the configuration
 
 This package plugs [CK.Monitoring](../CK.Monitoring/README.md) into a
-[.NET Generic Host](https://docs.microsoft.com/en-us/dotnet/core/extensions/generic-host) so that the
+[.NET Generic Host](https://learn.microsoft.com/dotnet/core/extensions/generic-host) so that the
 `GrandOutput.Default` is created and kept in sync with the "CK-Monitoring" section of the
-application configuration. This is what an application should use: the manual API described in
+application configuration. This is what an application should use: it brings `CK.Monitoring` along and
+configures it from `appsettings.json`. The manual API described in
 [CK.Monitoring](../CK.Monitoring/README.md) then only matters when you write a handler.
 
-> ℹ️ [CK-Sample-Monitoring](https://github.com/signature-opensource/CK-Sample-Monitoring) is a sample
-> repository built around this package. Its
-> [appsettings.json](https://github.com/signature-opensource/CK-Sample-Monitoring/blob/develop/MonitoringDemoApp/appsettings.json)
+> ℹ️ For an example of an application configured with this package that dynamically reacts to the changes
+> of its appsettings, see the [CK-Sample-Monitoring](https://github.com/signature-opensource/CK-Sample-Monitoring/blob/stable/README.md)
+> repository: its [appsettings.json](https://github.com/signature-opensource/CK-Sample-Monitoring/blob/stable/MonitoringDemoApp/appsettings.json)
 > is a fully commented configuration file.
 
 ## One line, placed early.
@@ -44,7 +45,7 @@ builder.
 
 `UseCKMonitoring()` reads the configuration section named "CK-Monitoring" - a section, not a file, so
 any of the standard
-[configuration providers](https://docs.microsoft.com/en-us/dotnet/core/extensions/configuration-providers)
+[configuration providers](https://learn.microsoft.com/dotnet/core/extensions/configuration-providers)
 feeds it. With the json provider, a typical configuration is:
 
 ```json
@@ -120,7 +121,8 @@ above are yours to write, with the same shape: the `ActivityMonitor` implementat
 
 An [`ILoggerProvider`](GrandOutputLoggerAdapterProvider.cs) is registered that routes every
 `Microsoft.Extensions.Logging` entry - so the framework's own logs, and any third-party library using
-`ILogger` - to `GrandOutput.ExternalLogs`. They land in the same handlers as the ActivityMonitor logs,
+`ILogger` - to `GrandOutput.ExternalLog`, filtered by the GrandOutput's `ExternalLogLevelFilter`
+(see `GrandOutput.IsExternalLogEnabled`). They land in the same handlers as the ActivityMonitor logs,
 which is usually the point of using this package in an ASP.NET application.
 
 ## An independent GrandOutput, for hosts inside hosts.

@@ -1,10 +1,10 @@
 # CK.Monitoring: the GrandOutput
 
 `CK.Monitoring` is the [sink](https://en.wikipedia.org/wiki/Sink_(computing)) side of the
-[ActivityMonitor](https://github.com/Invenietis/CK-ActivityMonitor): monitors emit log entries,
+[ActivityMonitor](https://github.com/signature-opensource/CK-ActivityMonitor/blob/stable/CK.ActivityMonitor/README.md): monitors emit log entries,
 this package collects them centrally and dispatches them to configurable handlers.
 
-> ℹ️ If you are not already familliar with the [ActivityMonitor](https://github.com/Invenietis/CK-ActivityMonitor),
+> ℹ️ If you are not already familiar with the [ActivityMonitor](https://github.com/signature-opensource/CK-ActivityMonitor/blob/stable/CK.ActivityMonitor/README.md),
 > read its documentation first.
 
 > ℹ️ In a hosted application, everything described below is normally driven from the "CK-Monitoring"
@@ -30,7 +30,8 @@ to the sink. Called without configuration, the default is equivalent to:
 new GrandOutputConfiguration().AddHandler(
     new Handlers.TextFileConfiguration()
     {
-      Path = "Text"
+      Path = "Text",
+      TimedFolderMode = { MaxCurrentLogFolderCount = 5 }
     })
 ```
 
@@ -102,29 +103,54 @@ closing the file and opening a new one.
 A handler implements [`IGrandOutputHandler`](Handlers/IGrandOutputHandler.cs):
 
 ```csharp
-  /// <summary>
-  /// Handler interface.
-  /// Object implementing this interface must expose a public constructor that accepts
-  /// its associated <see cref="IHandlerConfiguration"/> object.
-  /// </summary>
-  public interface IGrandOutputHandler
-  {
-      ValueTask<bool> ActivateAsync( IActivityMonitor m );
+/// <summary>
+/// Handler interface.
+/// Object implementing this interface must expose a public constructor that accepts
+/// its associated <see cref="IHandlerConfiguration"/> object.
+/// </summary>
+public interface IGrandOutputHandler
+{
+    /// <summary>
+    /// Prepares the handler to receive events.
+    /// This is called before any event will be received.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <returns>True on success, false on error (this handler will not be added).</returns>
+    ValueTask<bool> ActivateAsync( IActivityMonitor monitor );
 
-      ValueTask OnTimerAsync( IActivityMonitor m, TimeSpan timerSpan );
+    /// <summary>
+    /// Called on a regular basis.
+    /// Enables this handler to do any required housekeeping.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="timerSpan">Indicative timer duration.</param>
+    ValueTask OnTimerAsync( IActivityMonitor monitor, TimeSpan timerSpan );
 
-      ValueTask HandleAsync( IActivityMonitor m, InputEntry logEvent );
+    /// <summary>
+    /// Handles a log event.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="logEvent">The log event.</param>
+    ValueTask HandleAsync( IActivityMonitor monitor, InputLogEntry logEvent );
 
-      /// <summary>
-      /// Attempts to apply configuration if possible.
-      /// The handler must check the type of the given configuration and any key configuration
-      /// before accepting it and reconfigures it (in such case, true must be returned).
-      /// If this handler considers that this new configuration does not apply to itself, it must return false.
-      /// </summary>
-      ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor m, IHandlerConfiguration c );
+    /// <summary>
+    /// Attempts to apply configuration if possible.
+    /// The handler must check the type of the given configuration and any key configuration
+    /// before accepting it and reconfigures it (in such case, true must be returned).
+    /// If this handler considers that this new configuration does not apply to itself, it must return false.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    /// <param name="c">Configuration to apply.</param>
+    /// <returns>True if the configuration applied.</returns>
+    ValueTask<bool> ApplyConfigurationAsync( IActivityMonitor monitor, IHandlerConfiguration c );
 
-      ValueTask DeactivateAsync( IActivityMonitor m );
-  }
+    /// <summary>
+    /// Closes this handler.
+    /// This is called after the handler has been removed.
+    /// </summary>
+    /// <param name="monitor">The monitor to use.</param>
+    ValueTask DeactivateAsync( IActivityMonitor monitor );
+}
 ```
 
 `ApplyConfigurationAsync` is the interesting one: the handler itself decides whether an incoming
@@ -201,6 +227,13 @@ application, of course), instantiates the configuration and the handler, and act
 Sample code:
 [MailAlerterConfiguration](../Tests/CK.Monitoring.MailAlerterHandler/Handler/MailAlerterConfiguration.cs)
 and [MailAlerter](../Tests/CK.Monitoring.MailAlerterHandler/Handler/MailAlerter.cs).
+
+## Acting on the running handlers.
+
+⚠ This is an advanced usage.
+
+The running handlers belong to the GrandOutput's dispatcher: they can be reached only by submitting a
+`GrandOutputHandlersAction` to it. See [Handler actions](Handlers/HandlersAction/README.md).
 
 ## Handler configurations must never leave the host.
 
