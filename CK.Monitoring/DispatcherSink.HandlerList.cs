@@ -123,7 +123,7 @@ public sealed partial class DispatcherSink
     Task<bool> AddRemoveHandlerAsync( IGrandOutputHandler handler, bool add )
     {
         var a = new AddRemoveHandler( handler, add );
-        _queue.Writer.TryWrite( a );
+        Submit( a );
         return a.Completion;
     }
 

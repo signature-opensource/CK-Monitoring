@@ -24,7 +24,7 @@ Both implement [`IGrandOutputHandlersActionBase`](IGrandOutputHandlersActionBase
 implemented outside of CK.Monitoring) and expose a `Completion` task (a `Task<TResult>` for the action with
 a result) that completes once the action has been executed. An exception thrown by `RunAsync` faults the
 `Completion`. Actions that are still waiting in the dispatcher's queue when the GrandOutput is disposed
-are canceled.
+are canceled, and so are the ones submitted once it is disposed.
 
 ## Submitting an action
 

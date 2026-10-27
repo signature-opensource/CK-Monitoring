@@ -463,7 +463,11 @@ public sealed partial class DispatcherSink
     {
         Throw.CheckNotNullArgument( action );
         Throw.CheckArgument( "A GrandOutputHandlersAction can be used only once.", !action.Completion.IsCompleted );
-        _queue.Writer.TryWrite( action );
+        // When stopped, the action is canceled like the ones that are still queued when the sink stops.
+        if( !_queue.Writer.TryWrite( action ) )
+        {
+            action.Cancel();
+        }
     }
 
     internal void ApplyConfiguration( GrandOutputConfiguration configuration, bool waitForApplication )
