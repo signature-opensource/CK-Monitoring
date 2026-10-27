@@ -5,7 +5,7 @@ namespace CK.Monitoring.Hosting;
 
 /// <summary>
 /// This <see cref="ILoggerProvider"/> implementation routes
-/// logs to GrandOutput.ExternalLogs.
+/// logs to GrandOutput.ExternalLog.
 /// </summary>
 sealed class GrandOutputLoggerAdapterProvider : ILoggerProvider
 {

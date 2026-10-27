@@ -101,7 +101,7 @@ public sealed partial class DispatcherSink
     public Task<bool> AddHandlerAsync( IGrandOutputHandler handler ) => AddRemoveHandlerAsync( handler, true );
 
     /// <summary>
-    /// Adds a <see cref="IGrandOutputHandler"/>. See <see cref="HandlerList.RemoveAsync(IActivityMonitor, IGrandOutputHandler)"/>.
+    /// Removes a <see cref="IGrandOutputHandler"/>. See <see cref="HandlerList.RemoveAsync(IActivityMonitor, IGrandOutputHandler)"/>.
     /// </summary>
     /// <param name="handler">The handler to remove.</param>
     /// <returns>True on success, false on error.</returns>
