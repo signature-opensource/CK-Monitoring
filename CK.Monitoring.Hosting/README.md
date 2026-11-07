@@ -17,29 +17,18 @@ configures it from `appsettings.json`. The manual API described in
 ```diff
 using Microsoft.Extensions.Hosting;
 
-public class Program
-{
-    public static void Main(string[] args)
-    {
-        CreateHostBuilder(args).Build().Run();
-    }
-
-    public static IHostBuilder CreateHostBuilder(string[] args) =>
-        Host.CreateDefaultBuilder(args)
-+           .UseCKMonitoring()
-            .ConfigureServices((hostContext, services) =>
-            {
-                services.AddHostedService<Worker>();
-            });
-}
+var builder = Host.CreateApplicationBuilder( args );
++builder.UseCKMonitoring();
+builder.Services.AddHostedService<Worker>();
+var host = builder.CKBuild();
+await host.RunAsync();
 ```
 
-`UseCKMonitoring()` exists both on the legacy `IHostBuilder`
-([HostBuilderMonitoringHostExtensions](HostBuilder/HostBuilderMonitoringHostExtensions.cs)) and on the
-current `IHostApplicationBuilder`
+`UseCKMonitoring()` is an extension of the `HostApplicationBuilder` of a host
 ([HostApplicationBuilderMonitoringExtensions](HostApplicationBuilderMonitoringExtensions.cs)). It must
 run before any ActivityMonitor is instantiated, and it is safe to call more than once on the same
-builder.
+builder. It is for the builder of a host only: a builder created inside a running host (the web application of an
+endpoint for instance) must not reconfigure the `GrandOutput.Default`.
 
 ## The "CK-Monitoring" section is the whole configuration surface.
 
@@ -76,8 +65,7 @@ application runs updates, adds or removes handlers without losing the ones that 
 ## Logging from the builder, before the sink exists.
 
 There is a bootstrap problem: code running inside `CreateHostBuilder` wants to log, but the
-GrandOutput does not exist yet. `GetBuilderMonitor()` solves it - on `IHostBuilder`,
-`HostBuilderContext` and `IHostApplicationBuilder`:
+GrandOutput does not exist yet. `GetBuilderMonitor()` solves it, on any `IHostApplicationBuilder`:
 
 ```csharp
 var monitor = builder.GetBuilderMonitor();
@@ -102,20 +90,16 @@ var host = builder.CKBuild();
 
 ## What is *not* registered for you.
 
-The two `UseCKMonitoring()` differ here, and this is the one place where it matters.
-
-On the obsolete `IHostBuilder`, the DI registration is done for you - the initializer takes for granted
-that it is the first to register these:
+`UseCKMonitoring()` sets up the sink, the `ILoggerProvider` and, for an independent GrandOutput, an
+`IHostedService` - nothing else. The registration of the monitor is yours to write:
 
 ```csharp
   services.AddScoped<IActivityMonitor, ActivityMonitor>();
   services.AddScoped( sp => sp.GetRequiredService<IActivityMonitor>().ParallelLogger );
 ```
 
-On the current `IHostApplicationBuilder`, it is **not**: that overload sets up the sink, the
-`ILoggerProvider` and, for an independent GrandOutput, an `IHostedService` - nothing else. The two lines
-above are yours to write, with the same shape: the `ActivityMonitor` implementation is not mapped, only
-`IActivityMonitor` is exposed, and the `IParallelLogger` is the one of the monitor.
+The `ActivityMonitor` implementation is not mapped, only `IActivityMonitor` is exposed, and the `IParallelLogger` is the
+one of the monitor.
 
 ## Microsoft.Extensions.Logging entries are captured too.
 

@@ -7,15 +7,20 @@ using System;
 namespace Microsoft.Extensions.Hosting;
 
 /// <summary>
-/// Adds extension methods on <see cref="IHostApplicationBuilder"/>.
+/// Adds extension methods on the <see cref="HostApplicationBuilder"/> of a host (and <see cref="GetBuilderMonitor"/> on any
+/// <see cref="IHostApplicationBuilder"/>).
+/// <para>
+/// They apply to the builder of a host only: a builder created inside a running host (the web application of an endpoint
+/// for instance) must not reconfigure the <see cref="GrandOutput.Default"/>.
+/// </para>
 /// </summary>
 public static class HostApplicationBuilderMonitoringExtensions
 {
     /// <summary>
     /// Gets an activity monitor for this builder.
     /// <para>
-    /// This can always be called: logs in this monitor are retained and emitted once the code injected by <see cref="UseCKMonitoring{T}(T)"/>
-    /// is executed during <see cref="IHostBuilder.Build()"/>.  
+    /// This can always be called: logs in this monitor are retained and emitted once the code injected by <see cref="UseCKMonitoring(HostApplicationBuilder)"/>
+    /// is executed during <see cref="HostApplicationBuilder.Build()"/>.
     /// </para>
     /// </summary>
     /// <param name="builder">This builder.</param>
@@ -34,25 +39,25 @@ public static class HostApplicationBuilderMonitoringExtensions
         return monitor;
     }
 
-    sealed class AutoConfigurators<T> : List<Action<IActivityMonitor, T>> where T : IHostApplicationBuilder { }
+    sealed class AutoConfigurators : List<Action<IActivityMonitor, HostApplicationBuilder>> { }
 
     /// <summary>
     /// Memorizes a configuration action. These actions will be applied in the same order by <see cref="ApplyAutoConfigure"/>.
     /// </summary>
-    /// <typeparam name="T">This builder type.</typeparam>
     /// <param name="builder">This builder.</param>
     /// <param name="configure">A configuration action.</param>
     /// <returns>This builder.</returns>
-    public static T AddAutoConfigure<T>( this T builder, Action<IActivityMonitor, T> configure ) where T : IHostApplicationBuilder
+    public static HostApplicationBuilder AddAutoConfigure( this HostApplicationBuilder builder, Action<IActivityMonitor, HostApplicationBuilder> configure )
     {
         Throw.CheckNotNullArgument( configure );
-        if( builder.Properties.TryGetValue( typeof( AutoConfigurators<T> ), out var list ) )
+        IDictionary<object, object> props = ((IHostApplicationBuilder)builder).Properties;
+        if( props.TryGetValue( typeof( AutoConfigurators ), out var list ) )
         {
-            ((AutoConfigurators<T>)list).Add( configure );
+            ((AutoConfigurators)list).Add( configure );
         }
         else
         {
-            builder.Properties.Add( typeof( AutoConfigurators<T> ), new AutoConfigurators<T> { configure } );
+            props.Add( typeof( AutoConfigurators ), new AutoConfigurators { configure } );
         }
         return builder;
     }
@@ -60,27 +65,26 @@ public static class HostApplicationBuilderMonitoringExtensions
     /// <summary>
     /// Applies all the memorized actions by <see cref="AddAutoConfigure"/> to this builder.
     /// <para>
-    /// <see cref="CKBuild(HostApplicationBuilder)"/> (and CKBuild from CK.AspNet package helper for WebApplicationBuilder)
-    /// call this right before building the host.
+    /// <see cref="CKBuild(HostApplicationBuilder)"/> calls this right before building the host.
     /// </para>
     /// <para>
     /// It is safe to call this multiple times: only the first call applies the configurations.
     /// </para>
     /// </summary>
-    /// <typeparam name="T">This builder type.</typeparam>
     /// <param name="builder">This builder.</param>
-    public static void ApplyAutoConfigure<T>( this T builder ) where T : IHostApplicationBuilder
+    public static void ApplyAutoConfigure( this HostApplicationBuilder builder )
     {
         var monitor = builder.GetBuilderMonitor();
-        if( builder.Properties.TryGetValue( typeof( AutoConfigurators<T> ), out var list ) )
+        IDictionary<object, object> props = ((IHostApplicationBuilder)builder).Properties;
+        if( props.TryGetValue( typeof( AutoConfigurators ), out var list ) )
         {
-            var actions = (AutoConfigurators<T>)list;
+            var actions = (AutoConfigurators)list;
             using( monitor.OpenInfo( $"Applying {actions.Count} Auto configuration actions." ) )
             {
                 try
                 {
-                    foreach( var c in (AutoConfigurators<T>)list ) c( monitor, builder );
-                    builder.Properties.Remove( typeof( AutoConfigurators<T> ) );
+                    foreach( var c in actions ) c( monitor, builder );
+                    props.Remove( typeof( AutoConfigurators ) );
                 }
                 catch( Exception ex )
                 {
@@ -98,9 +102,6 @@ public static class HostApplicationBuilderMonitoringExtensions
     /// <summary>
     /// Wraps the call to <see cref="HostApplicationBuilder.Build"/> by calling <see cref="ApplyAutoConfigure"/>
     /// before building the host.
-    /// <para>
-    /// The package CK.AspNet exposes a similar CKBuild helper on WebApplicationBuilder (in Microsoft.AspNetCore package).
-    /// </para>
     /// </summary>
     /// <param name="builder">This builder.</param>
     /// <returns>An initialized <see cref="IHost"/>.</returns>
@@ -128,18 +129,17 @@ public static class HostApplicationBuilderMonitoringExtensions
     ///   services.AddScoped&lt;IActivityMonitor, ActivityMonitor&gt;();
     ///   services.AddScoped(sp => sp.GetRequiredService&lt;IActivityMonitor&gt;().ParallelLogger );
     /// </code>
-    /// Note that if for <see cref="HostApplicationBuilder"/> the IActivityMonitor registration should be done, this is
-    /// not the case for WebApplicationBuilder since the CKBuild from CK.AspNet package handles this.
     /// </para>
     /// </summary>
     /// <param name="builder">Host builder</param>
     /// <returns>The builder.</returns>
-    public static T UseCKMonitoring<T>( this T builder ) where T : IHostApplicationBuilder
+    public static HostApplicationBuilder UseCKMonitoring( this HostApplicationBuilder builder )
     {
         var t = typeof( GrandOutputConfigurator );
-        if( !builder.Properties.ContainsKey( t ) )
+        IDictionary<object, object> props = ((IHostApplicationBuilder)builder).Properties;
+        if( !props.ContainsKey( t ) )
         {
-            builder.Properties.Add( t, t );
+            props.Add( t, t );
             _ = new GrandOutputConfigurator( builder, isDefaultGrandOutput: true );
         }
         return builder;
@@ -149,19 +149,20 @@ public static class HostApplicationBuilderMonitoringExtensions
     /// Initializes an independent <see cref="GrandOutput"/> from the <see cref="IHostApplicationBuilder.Configuration"/> "CK-Monitoring" section.
     /// This GrandOuput will be automatically disposed when calling <see cref="IHost.StopAsync(System.Threading.CancellationToken)"/>.
     /// <para>
-    /// This is for advanced scenario. <see cref="UseCKMonitoring{T}(T)"/> should almost always be used.
+    /// This is for advanced scenario. <see cref="UseCKMonitoring(HostApplicationBuilder)"/> should almost always be used.
     /// </para>
     /// </summary>
     /// <param name="builder">Host builder</param>
     /// <param name="grandOutput">The new GrandOutput instance or the already existing one.</param>
     /// <returns>The builder.</returns>
-    public static T UseCKMonitoringWithIndependentGrandOutput<T>( this T builder, out GrandOutput grandOutput ) where T : IHostApplicationBuilder
+    public static HostApplicationBuilder UseCKMonitoringWithIndependentGrandOutput( this HostApplicationBuilder builder, out GrandOutput grandOutput )
     {
         var t = typeof( GrandOutput );
-        if( !builder.Properties.TryGetValue( t, out var oGrandOutput ) )
+        IDictionary<object, object> props = ((IHostApplicationBuilder)builder).Properties;
+        if( !props.TryGetValue( t, out var oGrandOutput ) )
         {
             var c = new GrandOutputConfigurator( builder, isDefaultGrandOutput: false );
-            builder.Properties.Add( t, oGrandOutput = c.GrandOutputTarget );
+            props.Add( t, oGrandOutput = c.GrandOutputTarget );
         }
         grandOutput = (GrandOutput)oGrandOutput;
         return builder;
