@@ -64,8 +64,8 @@ public sealed partial class DispatcherSink
         _stopTokenSource = new CancellationTokenSource();
         _stoppingToken = _stopTokenSource.Token;
         _timerDuration = timerDuration;
-        _deltaTicks = timerDuration.Ticks;
-        _deltaExternalTicks = externalTimerDuration.Ticks;
+        _deltaTicks = ToStopwatchTicks( timerDuration );
+        _deltaExternalTicks = ToStopwatchTicks( externalTimerDuration );
         _externalOnTimer = externalTimer;
         _filterChange = filterChange;
         _externalLogLock = new object();
@@ -82,6 +82,10 @@ public sealed partial class DispatcherSink
 
     internal string SinkMonitorId => _sinkMonitorId;
 
+    // A Stopwatch timestamp counts Stopwatch.Frequency ticks per second: this is the tick of a TimeSpan on Windows
+    // (10 000 000 per second) but not on Linux (1 000 000 000), where the timer ran 100 times too fast.
+    static long ToStopwatchTicks( TimeSpan duration ) => (long)(duration.Ticks * ((double)Stopwatch.Frequency / TimeSpan.TicksPerSecond));
+
     internal TimeSpan TimerDuration
     {
         get => _timerDuration;
@@ -90,7 +94,7 @@ public sealed partial class DispatcherSink
             if( _timerDuration != value )
             {
                 _timerDuration = value;
-                _deltaTicks = value.Ticks;
+                _deltaTicks = ToStopwatchTicks( value );
             }
         }
     }
@@ -124,8 +128,8 @@ public sealed partial class DispatcherSink
         monitor.UnfilteredLog( LogLevel.Info | LogLevel.IsFiltered, IdentityCard.IdentityCardFull, _identityCard.ToString(), null );
         // Configures the next timer due date.
         long now = Stopwatch.GetTimestamp();
-        _nextTicks = now + _timerDuration.Ticks;
-        _nextExternalTicks = now + _timerDuration.Ticks;
+        _nextTicks = now + _deltaTicks;
+        _nextExternalTicks = now + _deltaTicks;
         // Creates and launch the "awaker". This avoids any CancellationToken.
         Timer awaker = new Timer( _ => _queue.Writer.TryWrite( null ), null, 100u, 100u );
         while( await _queue.Reader.WaitToReadAsync() )
