@@ -1,6 +1,7 @@
 using CK.Core;
 using Shouldly;
 using NUnit.Framework;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -16,7 +17,7 @@ public class GrandOutputReconfigurationTests
         string folder = TestHelper.PrepareLogFolder( nameof( BinaryGzip_reconfiguration_Async ) );
         var h = new Handlers.BinaryFileConfiguration()
         {
-            Path = folder + @"\FirstPath",
+            Path = Path.Combine( folder, "FirstPath" ),
             UseGzipCompression = false
         };
         var c = new GrandOutputConfiguration().AddHandler( h );
@@ -37,7 +38,7 @@ public class GrandOutputReconfigurationTests
             m.Trace( "With Compression." );
             Thread.Sleep( 100 );
 
-            h.Path = folder + @"\SecondPath";
+            h.Path = Path.Combine( folder, "SecondPath" );
             g.ApplyConfiguration( c, true );
             m.Trace( "With Compression (in second folder)." );
             Thread.Sleep( 100 );
@@ -46,8 +47,10 @@ public class GrandOutputReconfigurationTests
             g.ApplyConfiguration( c, true );
             m.Trace( "No Compression (in second folder)." );
         }
+        // The files are sorted by name, that is by time: a folder is enumerated in the order of its file system
+        // (by name on NTFS, in no order on Linux).
         // First file is NOT compressed, the second one is.
-        var fileNamesFirst = Directory.EnumerateFiles( folder + @"\FirstPath" ).ToList();
+        var fileNamesFirst = Directory.EnumerateFiles( Path.Combine( folder, "FirstPath" ) ).Order( StringComparer.Ordinal ).ToList();
         fileNamesFirst.Count.ShouldBe( 2 );
         fileNamesFirst.ShouldBeInOrder().ShouldNotContain( s => s.EndsWith( ".tmp" ), "Temporary files have been closed." );
         File.ReadAllText( fileNamesFirst[0] ).ShouldContain( "No Compression." );
@@ -58,7 +61,7 @@ public class GrandOutputReconfigurationTests
             reader.Current.Text.ShouldBe( "With Compression." );
         }
         // First file is compressed, not the second one.
-        var fileNamesSecond = Directory.EnumerateFiles( folder + @"\SecondPath" ).ToList();
+        var fileNamesSecond = Directory.EnumerateFiles( Path.Combine( folder, "SecondPath" ) ).Order( StringComparer.Ordinal ).ToList();
         fileNamesSecond.Count.ShouldBe( 2 );
         fileNamesSecond.ShouldBeInOrder().ShouldNotContain( s => s.EndsWith( ".tmp" ), "Temporary files have been closed." );
         File.ReadAllText( fileNamesSecond[0] ).ShouldNotContain( "With Compression (in second folder).", "The fist file is compressed..." );

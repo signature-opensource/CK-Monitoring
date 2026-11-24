@@ -76,11 +76,14 @@ public class TextFileTests
         {
             var m = new ActivityMonitor( ActivityMonitorOptions.SkipAutoConfiguration );
             g.EnsureGrandOutputClient( m );
-            Thread.Sleep( 5 );
+            // The sink starts by emitting the identity card. It can be bigger than the 4096 bytes of the file buffer
+            // (8 KB on Linux, because of its time zone): written after our entry, it would push it to the file.
+            // We let it go first, and the file is then not empty.
+            Thread.Sleep( 200 );
             m.Info( "Must wait 3 seconds..." );
             Thread.Sleep( 700 );
             string tempFile = Directory.EnumerateFiles( folder ).Single();
-            TestHelper.FileReadAllText( tempFile ).ShouldBeEmpty();
+            TestHelper.FileReadAllText( tempFile ).ShouldNotContain( "Must wait 3 seconds..." );
             Thread.Sleep( 3000 );
             TestHelper.FileReadAllText( tempFile ).ShouldContain( "Must wait 3 seconds..." );
 
