@@ -1,6 +1,5 @@
 # CK-Monitoring
 
-[![Build status](https://ci.appveyor.com/api/projects/status/pxo8hsxuhqw3ebqa?svg=true)](https://ci.appveyor.com/project/Signature-OpenSource/ck-monitoring)
 [![Licence](https://img.shields.io/github/license/signature-opensource/CK-Monitoring.svg)](LICENSE)
 
 This repository contains the log [sink](https://en.wikipedia.org/wiki/Sink_(computing)) for the [ActivityMonitor](https://github.com/signature-opensource/CK-ActivityMonitor/blob/stable/CK.ActivityMonitor/README.md)s and its .NET Generic Host integration.
